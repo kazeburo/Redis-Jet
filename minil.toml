@@ -1,0 +1,6 @@
+name = "Redis-Jet"
+# badges = ["travis"]
+authority="cpan:KAZEBURO"
+
+module_maker="ModuleBuildTiny"
+
