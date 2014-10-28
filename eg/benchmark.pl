@@ -59,6 +59,12 @@ cmpthese(
         jet => sub {
             my $data = $jet->command(qw/incr incrfoo/);
         },
+        jet_direct => sub {
+            Redis::Jet::send_message($fileno, 10, qw/incr incrfoo/);
+            my @res;
+            Redis::Jet::read_message($fileno, 10, \@res, 1);
+            my $data = $res[0];
+        },
         jet_noreply => sub {
             $jet_noreply->command(qw/incr incrfoo/);
         },
@@ -89,6 +95,18 @@ cmpthese(
                 [qw/lpush login-log yyyyyyyyyyy/]
             );
         },
+        jet_direct => sub {
+            Redis::Jet::send_message($fileno, 10, 
+                [qw/del user-fail/],
+                [qw/del ip-fail/],
+                [qw/lpush user-log xxxxxxxxxxx/],
+                [qw/lpush login-log yyyyyyyyyyy/]
+            );
+            my @res;
+            Redis::Jet::read_message($fileno, 10, \@res, 1);
+            my $data = $res[0];
+        },
+
         jet_noreply => sub {
             $jet_noreply->command(
                 [qw/del user-fail/],

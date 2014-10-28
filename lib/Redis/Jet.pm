@@ -28,7 +28,6 @@ sub new {
     %args = (
         server => '127.0.0.1:6379',
         timeout => 10,
-        last_error => '',
         utf8 => 0,
         noreply => 0,
         %args,
@@ -41,7 +40,6 @@ sub new {
 sub connect {
     my $self = shift;
     return $self->{sock} if $self->{sock};
-    $self->{sockbuf} = '';
     my $socket = IO::Socket::INET->new(
         PeerAddr => $self->{server},
         Timeout => $self->{timeout},
@@ -54,15 +52,11 @@ sub connect {
     $socket;
 }
 
-sub last_error {
+sub res_error {
     my $self = shift;
-    if ( @_ ) {
-        delete $self->{sock};
-        delete $self->{fileno};
-        $self->{last_error} = shift;
-        return;
-    }
-    return $self->{last_error};
+    delete $self->{sock};
+    delete $self->{fileno};
+    return [undef,$_[0]];
 }
 
 sub command {
@@ -72,12 +66,17 @@ sub command {
     if ( ref $_[0] eq 'ARRAY' ) {
         $cmds = @_;
     }
-    my $fileno = $self->{fileno} || fileno($self->connect);
+    my $fileno = $self->{fileno};
+    if ( !$fileno ) {
+        my $socket = $self->connect
+            or return $self->res_error('cannot connect to redis server: '. (($!) ? "$!" : "timeout"));
+        $fileno = fileno($socket);
+    }
     my $sended = $self->{utf8}
         ? send_message_utf8($fileno, $self->{timeout}, @_)
         : send_message($fileno, $self->{timeout}, @_);
     if ( $sended < 0 ) {
-        return $self->last_error('failed to send message: '. (($!) ? "$!" : "timeout"));
+        return $self->res_error('failed to send message: '. (($!) ? "$!" : "timeout"));
     }
     if ( $self->{noreply} ) {
         phantom_read($fileno);
@@ -88,10 +87,10 @@ sub command {
         ? read_message_utf8($fileno, $self->{timeout}, \@res, $cmds)
         : read_message($fileno, $self->{timeout}, \@res, $cmds);
     if ( $res == -1 ) {
-        return $self->last_error('failed to read message: message corruption');
+        return $self->res_error('failed to read message: message corruption');
     }
     if ( $res == -2 ) {
-        return $self->last_error('failed to read message: '. (($!) ? "$!" : "timeout"));
+        return $self->res_error('failed to read message: '. (($!) ? "$!" : "timeout"));
     }
     return $res[0] if $cmds == 1;
     @res;
