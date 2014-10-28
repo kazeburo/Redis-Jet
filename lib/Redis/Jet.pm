@@ -73,20 +73,26 @@ sub command {
         $cmds = @_;
     }
     my $fileno = $self->{fileno} || fileno($self->connect);
-    my $sended = $self->{utf8} ?
-        send_message_utf8($fileno, $self->{timeout}, @_) 
-      : send_message($fileno, $self->{timeout}, @_);
-    ( $sended < 0 ) and $self->last_error('failed to send message: '. (($!) ? "$!" : "timeout") );
+    my $sended = $self->{utf8}
+        ? send_message_utf8($fileno, $self->{timeout}, @_)
+        : send_message($fileno, $self->{timeout}, @_);
+    if ( $sended < 0 ) {
+        return $self->last_error('failed to send message: '. (($!) ? "$!" : "timeout"));
+    }
     if ( $self->{noreply} ) {
         phantom_read($fileno);
-        return "0 but true";
+        return ["0 but true"];
     }
     my @res;
-    my $res = $self->{utf8} ? 
-        read_message_utf8($fileno, $self->{timeout}, \@res, $cmds)
-      : read_message($fileno, $self->{timeout}, \@res, $cmds);
-    ( $res == -1 ) and return $self->last_error('failed to read message: message corruption');
-    ( $res == -2 ) and return $self->last_error('failed to read message: '. (($!) ? "$!" : "timeout"));
+    my $res = $self->{utf8}
+        ? read_message_utf8($fileno, $self->{timeout}, \@res, $cmds)
+        : read_message($fileno, $self->{timeout}, \@res, $cmds);
+    if ( $res == -1 ) {
+        return $self->last_error('failed to read message: message corruption');
+    }
+    if ( $res == -2 ) {
+        return $self->last_error('failed to read message: '. (($!) ? "$!" : "timeout"));
+    }
     return $res[0] if $cmds == 1;
     @res;
 }

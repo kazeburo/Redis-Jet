@@ -87,20 +87,82 @@ _index_crlf(char * buf, const ssize_t buf_len, ssize_t offset) {
 
 static
 void
-_av_push(pTHX_ AV * data_av, const char * buf, ssize_t offset, const ssize_t copy_len, const int utf8) {
-    char *d;
+_av_push(pTHX_ AV * data_av, const char * buf, const ssize_t copy_len, const int utf8) {
     SV * dst;
-    ssize_t dlen = 0;
-    dst = newSV(0);
-    (void)SvUPGRADE(dst, SVt_PV);
-    d = SvGROW(dst, copy_len);
-    while( dlen < copy_len ) {
-      d[dlen++] = buf[offset++];
-    }
-    SvCUR_set(dst, dlen);
+    dst = newSVpvn(buf, copy_len);
     SvPOK_only(dst);
     if ( utf8 ) { SvUTF8_on(dst); }
     (void)av_push(data_av, dst);
+}
+
+static
+void
+_build_message(pTHX_ char * dest, ssize_t * dest_size, AV * av_list, const int utf8) {
+  STRLEN command_arg_len;
+  char *command_arg_src;
+  ssize_t dest_len = 0;
+  ssize_t i;
+  ssize_t j;
+  ssize_t fig = 0;
+  AV * a_list;
+  SV *command_arg;
+  
+  if ( SvOK(*av_fetch(av_list,0,0)) && SvROK(*av_fetch(av_list,0,0))
+  && SvTYPE(SvRV(*av_fetch(av_list,0,0))) == SVt_PVAV ) {
+    /* build_request([qw/set foo bar/],[qw/set bar baz/]) */
+    for( j=0; j < av_len(av_list)+1; j++ ) {
+      a_list = (AV *)SvRV(*av_fetch(av_list,j,0));
+      fig = (int)log10(av_len(a_list)+1) + 1;
+      dest[dest_len++] = '*';
+      memcat_i(dest, &dest_len, av_len(a_list)+1);
+      dest[dest_len++] = 13; // \r
+      dest[dest_len++] = 10; // \n
+      for (i=0; i<av_len(a_list)+1; i++) {
+        command_arg = *av_fetch(a_list,i,0);
+        command_arg_src = svpv2char(aTHX_ command_arg, &command_arg_len, utf8);
+        fig = (int)log10(command_arg_len) + 1;
+        /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
+        renewmem(aTHX_ &dest, &*dest_size, 1 + fig + 2 + command_arg_len + 2);
+        dest[dest_len++] = '$';
+        memcat_i(dest, &dest_len, command_arg_len);
+        dest[dest_len++] = 13; // \r
+        dest[dest_len++] = 10; // \n
+        memcat(dest, &dest_len, command_arg_src, command_arg_len);
+        dest[dest_len++] = 13; // \r
+        dest[dest_len++] = 10; // \n
+      }
+    }
+  }
+  else {
+    /* build_request(qw/set bar baz/)
+    $msg .= '*'.scalar(@_).$CRLF;
+    for my $m (@_) {
+      utf8::encode($m) if $self->{utf8};
+      $msg .= '$'.length($m).$CRLF.$m.$CRLF;
+    }
+    */
+    fig = (int)log10(av_len(av_list)+1) + 1;
+    dest[dest_len++] = '*';
+    memcat_i(dest, &dest_len, av_len(av_list)+1);
+    dest[dest_len++] = 13; // \r
+    dest[dest_len++] = 10; // \n
+
+    for( i=0; i < av_len(av_list)+1; i++ ) {
+      command_arg = *av_fetch(av_list,i,0);
+      command_arg_src = svpv2char(aTHX_ command_arg, &command_arg_len, utf8);
+      fig = (int)log10(command_arg_len) + 1;
+      /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
+      renewmem(aTHX_ &dest, &*dest_size, 1 + fig + 2 + command_arg_len + 2);
+      dest[dest_len++] = '$';
+      memcat_i(dest, &dest_len, command_arg_len);
+      dest[dest_len++] = 13; // \r
+      dest[dest_len++] = 10; // \n
+      memcat(dest, &dest_len, command_arg_src, command_arg_len);
+      dest[dest_len++] = 13; // \r
+      dest[dest_len++] = 10; // \n
+    }
+  }
+  *dest_size = dest_len;
 }
 
 /*
@@ -132,14 +194,14 @@ _parse_message(pTHX_ char * buf, const ssize_t buf_len, AV * data_av, const int 
   if ( buf[0] == '+' || buf[0] == ':') {
     /* 1 line reply
     +foo\r\n */
-    _av_push(aTHX_ data_av, buf, 1, first_crlf-1, utf8);
+    _av_push(aTHX_ data_av, &buf[1], first_crlf-1, utf8);
     return first_crlf + 2;
   }
   else if ( buf[0] == '-' ) {
     /* error
     -ERR unknown command 'a' */
     (void)av_push(data_av, &PL_sv_undef);
-    _av_push(aTHX_ data_av, buf, 1, first_crlf-1, utf8);
+    _av_push(aTHX_ data_av, &buf[1], first_crlf-1, utf8);
     return first_crlf + 2;
   }
   else if ( buf[0] == '$' ) {
@@ -159,7 +221,7 @@ _parse_message(pTHX_ char * buf, const ssize_t buf_len, AV * data_av, const int 
     if ( buf_len - (first_crlf + 2) < v_size + 2 ) {
       return -2;
     }
-    _av_push(aTHX_ data_av, buf, first_crlf+2, v_size, utf8);
+    _av_push(aTHX_ data_av, &buf[first_crlf+2], v_size, utf8);
     return first_crlf+2+v_size+2;
   }
   else if ( buf[0] == '*' ) {
@@ -212,7 +274,7 @@ _parse_message(pTHX_ char * buf, const ssize_t buf_len, AV * data_av, const int 
       if ( m_buf_len - m_read - (m_first_crlf + 2) < m_v_size + 2 ) {
         return -2;
       }
-      _av_push(aTHX_ av_list, m_buf, m_first_crlf+2, m_v_size, utf8);
+      _av_push(aTHX_ av_list, &m_buf[m_first_crlf+2], m_v_size, utf8);
       m_buf += m_first_crlf+2+m_v_size+2;
       m_read += m_first_crlf+2+m_v_size+2;
       if ( av_len(av_list) + 1 == m_size ) {
@@ -317,75 +379,20 @@ build_message(...)
     Redis::Jet::build_message = 0
     Redis::Jet::build_message_utf8 = 1
   PREINIT:
-    STRLEN command_arg_len;
-    ssize_t i, j, dest_len = 0, fig=0;
-    ssize_t dest_size = 1024;
-    ssize_t av_size;
-    char *dest, *command_arg_src;
-    SV *command_arg;
-    AV *a_list;
+    ssize_t i;
+    ssize_t message_len = 1024;
+    AV *av_list;
+    char * message;
   CODE:
-    Newx(dest, dest_size, char);
-
-    if ( SvOK(ST(0)) && SvROK(ST(0)) && SvTYPE(SvRV(ST(0))) == SVt_PVAV ) {
-      /* build_request([qw/set foo bar/],[qw/set bar baz/]) */
-      for( j=0; j < items; j++ ) {
-        a_list = (AV *)SvRV(ST(j));
-        av_size = av_len(a_list);
-        av_size++;
-        fig = (int)log10(av_size) + 1;
-        dest[dest_len++] = '*';
-        memcat_i(dest, &dest_len, av_size);
-        dest[dest_len++] = 13; // \r
-        dest[dest_len++] = 10; // \n
-        for (i=0; i<av_size; i++) {
-          command_arg = *av_fetch(a_list,i,0);
-          command_arg_src = svpv2char(aTHX_ command_arg, &command_arg_len, ix);
-          fig = (int)log10(command_arg_len) + 1;
-          /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
-          renewmem(aTHX_ &dest, &dest_size, 1 + fig + 2 + command_arg_len + 2);
-          dest[dest_len++] = '$';
-          memcat_i(dest, &dest_len, command_arg_len);
-          dest[dest_len++] = 13; // \r
-          dest[dest_len++] = 10; // \n
-          memcat(dest, &dest_len, command_arg_src, command_arg_len);
-          dest[dest_len++] = 13; // \r
-          dest[dest_len++] = 10; // \n
-        }
-      }
+    av_list = newAV();
+    for (i=0; i < items; i++ ) {
+      av_push(av_list, ST(i));
     }
-    else {
-      /* build_request(qw/set bar baz/)
-      $msg .= '*'.scalar(@_).$CRLF;
-      for my $m (@_) {
-        utf8::encode($m) if $self->{utf8};
-        $msg .= '$'.length($m).$CRLF.$m.$CRLF;
-      }
-      */
-      fig = (int)log10(items) + 1;
-      dest[dest_len++] = '*';
-      memcat_i(dest, &dest_len, items);
-      dest[dest_len++] = 13; // \r
-      dest[dest_len++] = 10; // \n
-
-      for( i=0; i < items; i++ ) {
-        command_arg = ST(i);
-        command_arg_src = svpv2char(aTHX_ command_arg, &command_arg_len, ix);
-        fig = (int)log10(command_arg_len) + 1;
-        /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
-        renewmem(aTHX_ &dest, &dest_size, 1 + fig + 2 + command_arg_len + 2);
-        dest[dest_len++] = '$';
-        memcat_i(dest, &dest_len, command_arg_len);
-        dest[dest_len++] = 13; // \r
-        dest[dest_len++] = 10; // \n
-        memcat(dest, &dest_len, command_arg_src, command_arg_len);
-        dest[dest_len++] = 13; // \r
-        dest[dest_len++] = 10; // \n
-      }
-    }
-    RETVAL = newSVpvn(dest, dest_len);
+    Newx(message, message_len, char);
+    _build_message(aTHX_ message, &message_len, av_list, ix);
+    RETVAL = newSVpvn(message, message_len);
     SvPOK_only(RETVAL);
-    Safefree(dest);
+    Safefree(message);
   OUTPUT:
     RETVAL
 
@@ -397,83 +404,31 @@ send_message(fileno, timeout, ...)
     Redis::Jet::send_message = 0
     Redis::Jet::send_message_utf8 = 1
   PREINIT:
-    STRLEN command_arg_len;
-    ssize_t i, j, dest_len=0, fig=0, write_len=0, write_off=0;
-    ssize_t av_size, written;
-    ssize_t dest_size=1024;
-    char *dest, *command_arg_src, *write_buf;
-    SV *command_arg;
-    AV *a_list;
+    ssize_t i;
+    ssize_t message_len = 1024;
+    ssize_t written;
+    ssize_t write_off;
+    ssize_t write_len;
+    AV *av_list;
+    char * message;
+    char * write_buf;
   CODE:
-    Newx(dest, dest_size, char);
-
-    if ( SvOK(ST(2)) && SvROK(ST(2)) && SvTYPE(SvRV(ST(2))) == SVt_PVAV ) {
-      /* build_request([qw/set foo bar/],[qw/set bar baz/]) */
-      for( j=2; j < items; j++ ) {
-        a_list = (AV *)SvRV(ST(j));
-        av_size = av_len(a_list);
-        av_size++;
-        fig = (int)log10(av_size) + 1;
-        dest[dest_len++] = '*';
-        memcat_i(dest, &dest_len, av_size);
-        dest[dest_len++] = 13; // \r
-        dest[dest_len++] = 10; // \n
-        for (i=0; i<av_size; i++) {
-          command_arg = *av_fetch(a_list,i,0);
-          command_arg_src = svpv2char(aTHX_ command_arg, &command_arg_len, ix);
-          fig = (int)log10(command_arg_len) + 1;
-          /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
-          renewmem(aTHX_ &dest, &dest_size, 1 + fig + 2 + command_arg_len + 2);
-          dest[dest_len++] = '$';
-          memcat_i(dest, &dest_len, command_arg_len);
-          dest[dest_len++] = 13; // \r
-          dest[dest_len++] = 10; // \n
-          memcat(dest, &dest_len, command_arg_src, command_arg_len);
-          dest[dest_len++] = 13; // \r
-          dest[dest_len++] = 10; // \n
-        }
-      }
+    Newx(message, message_len, char);
+    av_list = newAV();
+    for (i=2; i < items; i++ ) {
+      av_push(av_list, ST(i));
     }
-    else {
-      /* build_request(qw/set bar baz/)
-      $msg .= '*'.scalar(@_).$CRLF;
-      for my $m (@_) {
-        utf8::encode($m) if $self->{utf8};
-        $msg .= '$'.length($m).$CRLF.$m.$CRLF;
-      }
-      */
-      fig = (int)log10(items-2) + 1;
-      dest[dest_len++] = '*';
-      memcat_i(dest, &dest_len, items-2);
-      dest[dest_len++] = 13; // \r
-      dest[dest_len++] = 10; // \n
-
-      for( i=2; i < items; i++ ) {
-        command_arg = ST(i);
-        command_arg_src = svpv2char(aTHX_ command_arg, &command_arg_len, ix);
-        fig = (int)log10(command_arg_len) + 1;
-        /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
-        renewmem(aTHX_ &dest, &dest_size, 1 + fig + 2 + command_arg_len + 2);
-        dest[dest_len++] = '$';
-        memcat_i(dest, &dest_len, command_arg_len);
-        dest[dest_len++] = 13; // \r
-        dest[dest_len++] = 10; // \n
-        memcat(dest, &dest_len, command_arg_src, command_arg_len);
-        dest[dest_len++] = 13; // \r
-        dest[dest_len++] = 10; // \n
-      }
-    }
-
+    _build_message(aTHX_ message, &message_len, av_list, ix);
     written = 0;
     write_off = 0;
-    write_buf = &dest[0];
-    while ( (write_len = dest_len - write_off) > 0 ) {
+    write_buf = &message[0];
+    while ( (write_len = message_len - write_off) > 0 ) {
       written = _write_timeout(fileno, timeout, write_buf, write_len);
       if ( written < 0 ) {
         break;
       }
       write_off += written;
-      write_buf = &dest[write_off];
+      write_buf = &message[write_off];
     }
 
     if (written < 0) {
@@ -484,7 +439,7 @@ send_message(fileno, timeout, ...)
       ST(0) = sv_newmortal();
       sv_setnv( ST(0), (unsigned long) write_off);
     }
-    Safefree(dest);
+    Safefree(message);
 
 ssize_t
 phantom_read(fileno)

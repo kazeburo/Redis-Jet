@@ -17,6 +17,15 @@ my $jet_noreply = Redis::Jet->new(noreply=>1);
 $jet->command(qw!set foo foovalue!);
 say $fast->get('foo');
 
+my $fileno = fileno($jet->connect);
+
+Redis::Jet::send_message($fileno, 10, qw/get foo/);
+my @res;
+say Redis::Jet::read_message($fileno, 10, \@res, 1);
+my $data = $res[0];
+say $data->[0];
+
+print "single get =======\n";
 
 cmpthese(
     -1,
@@ -26,6 +35,12 @@ cmpthese(
         },
         jet => sub {
             my $data = $jet->command(qw/get foo/);
+        },
+        jet_direct => sub {
+            Redis::Jet::send_message($fileno, 10, qw/get foo/);
+            my @res;
+            Redis::Jet::read_message($fileno, 10, \@res, 1);
+            my $data = $res[0];
         },
         redis => sub {
             my $data = $redis->get('foo');
@@ -91,4 +106,6 @@ cmpthese(
         },
     }
 );
+
+
 
