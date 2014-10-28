@@ -79,7 +79,7 @@ sub command {
         return $self->res_error('failed to send message: '. (($!) ? "$!" : "timeout"));
     }
     if ( $self->{noreply} ) {
-        phantom_read($fileno);
+        phantom_read($fileno) if rand($self->{noreply}) == 0; 
         return ["0 but true"];
     }
     my @res;

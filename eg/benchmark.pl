@@ -12,7 +12,7 @@ use Redis;
 my $redis = Redis->new;
 my $fast = Redis::Fast->new;
 my $jet = Redis::Jet->new;
-my $jet_noreply = Redis::Jet->new(noreply=>1);
+my $jet_noreply = Redis::Jet->new(noreply=>10);
 
 $jet->command(qw!set foo foovalue!);
 say $fast->get('foo');
