@@ -16,7 +16,7 @@ extern "C" {
 
 static
 void
-memcat( char * dst, ssize_t *dst_len, const char * src, ssize_t src_len ) {
+memcat( char * dst, ssize_t *dst_len, const char * src, const ssize_t src_len ) {
     ssize_t i;
     ssize_t dlen = *dst_len;
     for ( i=0; i<src_len; i++) {
@@ -27,7 +27,7 @@ memcat( char * dst, ssize_t *dst_len, const char * src, ssize_t src_len ) {
 
 static
 void
-memcopyset( char * dst, ssize_t dst_len, const char * src, ssize_t src_len ) {
+memcopyset( char * dst, ssize_t dst_len, const char * src, const ssize_t src_len ) {
     ssize_t i;
     ssize_t dlen = dst_len;
     for ( i=0; i<src_len; i++) {
@@ -37,7 +37,7 @@ memcopyset( char * dst, ssize_t dst_len, const char * src, ssize_t src_len ) {
 
 static
 char *
-svpv2char(pTHX_ SV *string, STRLEN *len, int utf8) {
+svpv2char(pTHX_ SV *string, STRLEN *len, const int utf8) {
     char *str;
     STRLEN str_len;
     if ( utf8 == 1 ) {
@@ -64,7 +64,6 @@ renewmem(pTHX_ char **d, ssize_t *cur, const ssize_t req) {
 static
 void
 memcat_i(char * dst, ssize_t *dst_len, ssize_t snum ) {
-    int i;
     int dlen = *dst_len;
     do {
         dst[dlen++] = '0' + (snum % 10);
@@ -74,49 +73,29 @@ memcat_i(char * dst, ssize_t *dst_len, ssize_t snum ) {
 
 static
 long int
-_index_crlf(char * buf, ssize_t buf_len, ssize_t offset) {
+_index_crlf(char * buf, const ssize_t buf_len, ssize_t offset) {
   ssize_t ret = -1;
-  ssize_t i;
-  for ( i=offset; i < buf_len - 1; i++ ) {
-    if (buf[i] == 13 && buf[i+1] == 10 ) {
-      ret = i;
+  while( offset < buf_len -1 ) {
+    if (buf[offset] == 13 && buf[offset+1] == 10 ) {
+      ret = offset;
       break;
     }
+    offset++;
   }
   return ret;
 }
 
 static
 void
-_hv_store(pTHX_ HV * data_hv, const char *key, int key_len, char * buf, ssize_t offset, ssize_t copy_len, int utf8) {
+_av_push(pTHX_ AV * data_av, const char * buf, ssize_t offset, const ssize_t copy_len, const int utf8) {
     char *d;
     SV * dst;
-    ssize_t i;
     ssize_t dlen = 0;
     dst = newSV(0);
     (void)SvUPGRADE(dst, SVt_PV);
     d = SvGROW(dst, copy_len);
-    for (i=offset; i<offset+copy_len; i++){
-      d[dlen++] = buf[i];
-    }
-    SvCUR_set(dst, dlen);
-    SvPOK_only(dst);
-    if ( utf8 ) { SvUTF8_on(dst); }
-    (void)hv_store(data_hv, key, key_len, dst, 0);
-}
-
-static
-void
-_av_push(pTHX_ AV * data_av, char * buf, ssize_t offset, ssize_t copy_len, int utf8) {
-    char *d;
-    SV * dst;
-    ssize_t i;
-    ssize_t dlen = 0;
-    dst = newSV(0);
-    (void)SvUPGRADE(dst, SVt_PV);
-    d = SvGROW(dst, copy_len);
-    for (i=offset; i<offset+copy_len; i++){
-      d[dlen++] = buf[i];
+    while( dlen < copy_len ) {
+      d[dlen++] = buf[offset++];
     }
     SvCUR_set(dst, dlen);
     SvPOK_only(dst);
@@ -130,7 +109,7 @@ _av_push(pTHX_ AV * data_av, char * buf, ssize_t offset, ssize_t copy_len, int u
 */
 static
 long int
-_parse_message(pTHX_ char * buf, ssize_t buf_len, HV * data_hv, int utf8) {
+_parse_message(pTHX_ char * buf, const ssize_t buf_len, AV * data_av, const int utf8) {
   long int first_crlf;
   long int m_first_crlf;
   ssize_t v_size;
@@ -153,13 +132,14 @@ _parse_message(pTHX_ char * buf, ssize_t buf_len, HV * data_hv, int utf8) {
   if ( buf[0] == '+' || buf[0] == ':') {
     /* 1 line reply
     +foo\r\n */
-    _hv_store(aTHX_ data_hv, "data", 4, buf, 1, first_crlf-1, utf8);
+    _av_push(aTHX_ data_av, buf, 1, first_crlf-1, utf8);
     return first_crlf + 2;
   }
   else if ( buf[0] == '-' ) {
     /* error
     -ERR unknown command 'a' */
-    _hv_store(aTHX_ data_hv, "error", 5, buf, 1, first_crlf-1, utf8);
+    (void)av_push(data_av, &PL_sv_undef);
+    _av_push(aTHX_ data_av, buf, 1, first_crlf-1, utf8);
     return first_crlf + 2;
   }
   else if ( buf[0] == '$' ) {
@@ -169,7 +149,7 @@ _parse_message(pTHX_ char * buf, ssize_t buf_len, HV * data_hv, int utf8) {
        S: foo
     */
     if ( buf[1] == '-' && buf[2] == '1' ) {
-      (void)hv_store(data_hv, "data", 4, &PL_sv_undef, 0);
+      (void)av_push(data_av, &PL_sv_undef);
       return first_crlf + 2;
     }
     v_size = 0;
@@ -179,7 +159,7 @@ _parse_message(pTHX_ char * buf, ssize_t buf_len, HV * data_hv, int utf8) {
     if ( buf_len - (first_crlf + 2) < v_size + 2 ) {
       return -2;
     }
-    _hv_store(aTHX_ data_hv, "data", 4, buf, first_crlf+2, v_size, utf8);
+    _av_push(aTHX_ data_av, buf, first_crlf+2, v_size, utf8);
     return first_crlf+2+v_size+2;
   }
   else if ( buf[0] == '*' ) {
@@ -196,7 +176,7 @@ _parse_message(pTHX_ char * buf, ssize_t buf_len, HV * data_hv, int utf8) {
        #
     */
     if ( buf[1] == '-' && buf[2] == '1' ) {
-      (void)hv_store(data_hv, "data", 4, &PL_sv_undef, 0);
+      (void)av_push(data_av, &PL_sv_undef);
       return first_crlf + 2;
     }
     m_size = 0;
@@ -205,7 +185,7 @@ _parse_message(pTHX_ char * buf, ssize_t buf_len, HV * data_hv, int utf8) {
     }
     av_list = newAV();
     if ( m_size == 0 ) {
-      (void)hv_store(data_hv, "data", 4, newRV_noinc((SV *) av_list), 0);
+      (void)av_push(data_av, newRV_noinc((SV *) av_list));
       return first_crlf + 2;
     }
     m_buf = &buf[first_crlf + 2];
@@ -242,7 +222,7 @@ _parse_message(pTHX_ char * buf, ssize_t buf_len, HV * data_hv, int utf8) {
     if ( av_len(av_list) + 1 < m_size ) {
       return -2;
     }
-    (void)hv_store(data_hv, "data", 4, newRV_noinc((SV *) av_list), 0);
+    (void)av_push(data_av, newRV_noinc((SV *) av_list));
     return first_crlf + 2 + m_read;
   }
   else {
@@ -526,7 +506,7 @@ parse_message(buf_sv, res_av)
   PREINIT:
     ssize_t buf_len;
     char * buf;
-    HV * data_hv;
+    AV * data_av;
     long int ret;
     long int readed;
   CODE:
@@ -534,8 +514,8 @@ parse_message(buf_sv, res_av)
     buf = SvPV_nolen(buf_sv);
     readed = 0;
     while ( buf_len > 0 ) {
-      data_hv = newHV();
-      ret = _parse_message(aTHX_ buf, buf_len, data_hv, ix);
+      data_av = newAV();
+      ret = _parse_message(aTHX_ buf, buf_len, data_av, ix);
       if ( ret == -1 ) {
         XSRETURN_UNDEF;
       }
@@ -543,7 +523,7 @@ parse_message(buf_sv, res_av)
         break;
       }
       else {
-        av_push(res_av, newRV_noinc((SV *) data_hv));
+        av_push(res_av, newRV_noinc((SV *) data_av));
         readed += ret;
         buf_len -= ret;
         buf = &buf[ret];
@@ -564,14 +544,16 @@ read_message(fileno, timeout, av_list, required)
     Redis::Jet::read_message_utf8 = 1
   PREINIT:
     int has_error=0;
-    long int read_max=131072;
+    long int read_max=1024*16;
     long int read_buf_len=0;
     long int buf_len;
     long int ret;
     ssize_t parse_result;
     ssize_t parse_offset = 0;
     char *read_buf;
-    HV *data_hv;
+    AV *data_av;
+    fd_set rfds;
+    struct timeval tv;
   CODE:
     Newx(read_buf, read_max, char);
     buf_len = read_max;
@@ -584,8 +566,8 @@ read_message(fileno, timeout, av_list, required)
       }
       read_buf_len += ret;
       while ( read_buf_len > parse_offset ) {
-        data_hv = newHV();
-        parse_result = _parse_message(aTHX_ &read_buf[parse_offset], read_buf_len - parse_offset, data_hv, ix);
+        data_av = newAV();
+        parse_result = _parse_message(aTHX_ &read_buf[parse_offset], read_buf_len - parse_offset, data_av, ix);
         if ( parse_result == -1 ) {
           /* corruption */
           has_error = -1;
@@ -596,7 +578,7 @@ read_message(fileno, timeout, av_list, required)
         }
         else {
           parse_offset += parse_result;
-          av_push(av_list, newRV_noinc((SV *) data_hv));
+          av_push(av_list, newRV_noinc((SV *) data_av));
         }
       }
       if ( av_len(av_list) + 1 >= required ) {

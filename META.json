@@ -52,6 +52,17 @@
       }
    },
    "release_status" : "unstable",
+   "resources" : {
+      "bugtracker" : {
+         "web" : "https://github.com/kazeburo/Redis-Jet/issues"
+      },
+      "homepage" : "https://github.com/kazeburo/Redis-Jet",
+      "repository" : {
+         "type" : "git",
+         "url" : "git://github.com/kazeburo/Redis-Jet.git",
+         "web" : "https://github.com/kazeburo/Redis-Jet"
+      }
+   },
    "version" : "0.01",
    "x_authority" : "cpan:KAZEBURO"
 }

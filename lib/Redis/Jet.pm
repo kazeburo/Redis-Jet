@@ -46,9 +46,9 @@ sub connect {
         PeerAddr => $self->{server},
         Timeout => $self->{timeout},
     ) or return;
-    $socket->blocking(0) or die $!;
     $socket->setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
         or die "setsockopt(TCP_NODELAY) failed:$!";
+    $socket->blocking(0) or die $!;
     $self->{sock} = $socket;
     $self->{fileno} = fileno($socket);
     $socket;
