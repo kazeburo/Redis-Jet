@@ -238,7 +238,7 @@ _write_timeout(int fileno, double timeout, char * write_buf, int write_len ) {
     struct timeval tv_end;
   DO_WRITE:
     rv = write(fileno, write_buf, write_len);
-    if ( rv > 0 ) {
+    if ( rv >= 0 ) {
       return rv;
     }
     if ( rv < 0 && errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK ) {
@@ -277,7 +277,7 @@ _read_timeout(int fileno, double timeout, char * read_buf, int read_len ) {
     struct timeval tv_end;
   DO_READ:
     rv = read(fileno, read_buf, read_len);
-    if ( rv > 0 ) {
+    if ( rv >= 0 ) {
       return rv;
     }
     if ( rv < 0 && errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK ) {
@@ -454,11 +454,11 @@ run_command(self,...)
     Safefree(request);
     EXTEND(SP, pipeline_len);
     /* request error */
-    if (ret < 0) {
+    if (ret <= 0) {
       for (i=0; i<pipeline_len; i++) {
         data_av = newAV(); // (AV*)sv_2mortal((SV*)newAV());
         (void)av_push(data_av, &PL_sv_undef);
-        (void)av_push(data_av, newSVpvf("failed to send message: %s", ( errno != 0 ) ? strerror(errno) : "timeout"));
+        (void)av_push(data_av, newSVpvf("failed to send message: %s", ( errno != 0 ) ? strerror(errno) : "timeout or disconnected"));
         PUSHs( sv_2mortal(newRV_noinc((SV *) data_av)) );
       }
       (void)hv_delete(self, "fileno", strlen("fileno"), 0);
@@ -484,12 +484,12 @@ run_command(self,...)
     readed = 0;
     while (1) {
       ret = _read_timeout(fileno, timeout, &read_buf[readed], read_max);
-      if ( ret < 0 ) {
+      if ( ret <= 0 ) {
         /* timeout or error */
-        data_av = newAV();
-        (void)av_push(data_av, &PL_sv_undef);
-        (void)av_push(data_av, newSVpvf("failed to read message: %s", ( errno != 0 ) ? strerror(errno) : "timeout"));
         for (i=0; i<pipeline_len; i++) {
+          data_av = newAV();
+          (void)av_push(data_av, &PL_sv_undef);
+          (void)av_push(data_av, newSVpvf("failed to read message: %s", ( errno != 0 ) ? strerror(errno) : "timeout or disconnected"));
           response_st[i].data = data_av;
         }
         (void)hv_delete(self, "fileno", strlen("fileno"), 0);
@@ -502,10 +502,10 @@ run_command(self,...)
         parse_result = _parse_message(aTHX_ &read_buf[parse_offset], readed - parse_offset, data_av, utf8);
         if ( parse_result == -1 ) {
           /* corruption */
-          data_av = newAV();
-          (void)av_push(data_av, &PL_sv_undef);
-          (void)av_push(data_av, newSVpv("failed to read message: corrupted message found",0));
           for (i=0; i<pipeline_len; i++) {
+            data_av = newAV();
+            (void)av_push(data_av, &PL_sv_undef);
+            (void)av_push(data_av, newSVpv("failed to read message: corrupted message found",0));
             response_st[i].data = data_av;
           }
           (void)hv_delete(self, "fileno", strlen("fileno"), 0);

@@ -53,15 +53,21 @@ sub res_error {
     my $self = shift;
     delete $self->{sock};
     delete $self->{fileno};
-    return [undef,$_[0]];
+    my @res;
+    push @res,[undef,$_[0]] for 1..$_[1];
+    return @res;
 }
 
 sub command {
     my $self = shift;
     return unless @_;
+    my $pipeline = 1;
+    if ( ref $_[0] eq "ARRAY") {
+        $pipeline = @_;
+    }
     if ( !$self->{fileno} ) {
         $self->connect;
-        $self->{fileno} or return $self->res_error('cannot connect to redis server: '. (($!) ? "$!" : "timeout"));
+        $self->{fileno} or return $self->res_error('cannot connect to redis server: '. (($!) ? "$!" : "timeout"), $pipeline);
     }
     run_command($self, @_);
 }
