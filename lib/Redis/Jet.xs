@@ -481,7 +481,7 @@ run_command(self,...)
     /* request error */
     if (ret <= 0) {
       for (i=0; i<pipeline_len; i++) {
-        data_av = newAV(); // (AV*)sv_2mortal((SV*)newAV());
+        data_av = newAV();
         (void)av_push(data_av, &PL_sv_undef);
         (void)av_push(data_av, newSVpvf("failed to send message: %s", ( errno != 0 ) ? strerror(errno) : "timeout or disconnected"));
         PUSHs( sv_2mortal(newRV_noinc((SV *) data_av)) );
@@ -493,7 +493,7 @@ run_command(self,...)
     if ( noreply > 0 ) {
       ret = read(fileno, NULL, read_max);
       for (i=0; i<pipeline_len; i++) {
-        data_av = newAV(); // (AV*)sv_2mortal((SV*)newAV());
+        data_av = newAV();
         (void)av_push(data_av, newSVpvn("0 but true",10));
         PUSHs( sv_2mortal(newRV_noinc((SV *) data_av)) );
       }
@@ -543,6 +543,9 @@ run_command(self,...)
         else {
           parse_offset += parse_result;
           response_st[parsed_response++].data = data_av;
+          if ( parsed_response >= pipeline_len ) {
+            break;
+          }
         }
       }
       if ( parsed_response >= pipeline_len ) {
