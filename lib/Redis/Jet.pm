@@ -11,10 +11,7 @@ use Time::HiRes qw/time/;
 use base qw/Exporter/;
 
 our @EXPORT_OK = qw/
-                    build_message build_message_utf8
-                    send_message send_message_utf8
                     parse_message parse_message_utf8
-                    read_message read_message_utf8
                 /;
 
 our $VERSION = "0.01";

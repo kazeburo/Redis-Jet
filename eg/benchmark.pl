@@ -14,7 +14,9 @@ my $fast = Redis::Fast->new;
 my $jet = Redis::Jet->new;
 my $jet_noreply = Redis::Jet->new(noreply=>1);
 
-$jet->command(qw!set foo foovalue!);
+my @val = $jet->command(qw!set foo foovalue!);
+use Data::Dumper;
+say Dumper(\@val);
 say $fast->get('foo');
 
 print "single get =======\n";

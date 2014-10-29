@@ -14,6 +14,11 @@ extern "C" {
 #define NEED_newSVpvn_flags
 #include "ppport.h"
 
+struct jet_response_st
+{
+  AV *data;
+};
+
 static
 void
 memcat( char * dst, ssize_t *dst_len, const char * src, const ssize_t src_len ) {
@@ -93,79 +98,6 @@ _av_push(pTHX_ AV * data_av, const char * buf, const ssize_t copy_len, const int
     SvPOK_only(dst);
     if ( utf8 ) { SvUTF8_on(dst); }
     (void)av_push(data_av, dst);
-}
-
-static
-ssize_t
-_build_message(pTHX_ char * dest, ssize_t * dest_size, AV * av_list, const int utf8) {
-  STRLEN command_arg_len;
-  char *command_arg_src;
-  ssize_t dest_len = 0;
-  ssize_t i;
-  ssize_t j;
-  ssize_t fig = 0;
-  ssize_t command_len = 1;
-  AV * a_list;
-  SV *command_arg;
-  
-  if ( SvOK(*av_fetch(av_list,0,0)) && SvROK(*av_fetch(av_list,0,0))
-  && SvTYPE(SvRV(*av_fetch(av_list,0,0))) == SVt_PVAV ) {
-    /* build_request([qw/set foo bar/],[qw/set bar baz/]) */
-    command_len = av_len(av_list)+1;
-    for( j=0; j < av_len(av_list)+1; j++ ) {
-      a_list = (AV *)SvRV(*av_fetch(av_list,j,0));
-      fig = (int)log10(av_len(a_list)+1) + 1;
-      dest[dest_len++] = '*';
-      memcat_i(dest, &dest_len, av_len(a_list)+1);
-      dest[dest_len++] = 13; // \r
-      dest[dest_len++] = 10; // \n
-      for (i=0; i<av_len(a_list)+1; i++) {
-        command_arg = *av_fetch(a_list,i,0);
-        command_arg_src = svpv2char(aTHX_ command_arg, &command_arg_len, utf8);
-        fig = (int)log10(command_arg_len) + 1;
-        /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
-        renewmem(aTHX_ &dest, &*dest_size, 1 + fig + 2 + command_arg_len + 2);
-        dest[dest_len++] = '$';
-        memcat_i(dest, &dest_len, command_arg_len);
-        dest[dest_len++] = 13; // \r
-        dest[dest_len++] = 10; // \n
-        memcat(dest, &dest_len, command_arg_src, command_arg_len);
-        dest[dest_len++] = 13; // \r
-        dest[dest_len++] = 10; // \n
-      }
-    }
-  }
-  else {
-    /* build_request(qw/set bar baz/)
-    $msg .= '*'.scalar(@_).$CRLF;
-    for my $m (@_) {
-      utf8::encode($m) if $self->{utf8};
-      $msg .= '$'.length($m).$CRLF.$m.$CRLF;
-    }
-    */
-    fig = (int)log10(av_len(av_list)+1) + 1;
-    dest[dest_len++] = '*';
-    memcat_i(dest, &dest_len, av_len(av_list)+1);
-    dest[dest_len++] = 13; // \r
-    dest[dest_len++] = 10; // \n
-
-    for( i=0; i < av_len(av_list)+1; i++ ) {
-      command_arg = *av_fetch(av_list,i,0);
-      command_arg_src = svpv2char(aTHX_ command_arg, &command_arg_len, utf8);
-      fig = (int)log10(command_arg_len) + 1;
-      /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
-      renewmem(aTHX_ &dest, &*dest_size, 1 + fig + 2 + command_arg_len + 2);
-      dest[dest_len++] = '$';
-      memcat_i(dest, &dest_len, command_arg_len);
-      dest[dest_len++] = 13; // \r
-      dest[dest_len++] = 10; // \n
-      memcat(dest, &dest_len, command_arg_src, command_arg_len);
-      dest[dest_len++] = 13; // \r
-      dest[dest_len++] = 10; // \n
-    }
-  }
-  *dest_size = dest_len;
-  return command_len;
 }
 
 /*
@@ -377,84 +309,6 @@ MODULE = Redis::Jet    PACKAGE = Redis::Jet
 PROTOTYPES: DISABLE
 
 SV *
-build_message(...)
-  ALIAS:
-    Redis::Jet::build_message = 0
-    Redis::Jet::build_message_utf8 = 1
-  PREINIT:
-    ssize_t i;
-    ssize_t message_len = 1024;
-    AV *av_list;
-    char * message;
-  CODE:
-    av_list = newAV();
-    for (i=0; i < items; i++ ) {
-      av_push(av_list, ST(i));
-    }
-    Newx(message, message_len, char);
-    _build_message(aTHX_ message, &message_len, av_list, ix);
-    RETVAL = newSVpvn(message, message_len);
-    SvPOK_only(RETVAL);
-    Safefree(message);
-  OUTPUT:
-    RETVAL
-
-SV *
-send_message(fileno, timeout, ...)
-    int fileno
-    double timeout
-  ALIAS:
-    Redis::Jet::send_message = 0
-    Redis::Jet::send_message_utf8 = 1
-  PREINIT:
-    ssize_t i;
-    ssize_t message_len = 1024;
-    ssize_t written;
-    ssize_t write_off;
-    ssize_t write_len;
-    AV *av_list;
-    char * message;
-    char * write_buf;
-  CODE:
-    Newx(message, message_len, char);
-    av_list = newAV();
-    for (i=2; i < items; i++ ) {
-      av_push(av_list, ST(i));
-    }
-    _build_message(aTHX_ message, &message_len, av_list, ix);
-    written = 0;
-    write_off = 0;
-    write_buf = &message[0];
-    while ( (write_len = message_len - write_off) > 0 ) {
-      written = _write_timeout(fileno, timeout, write_buf, write_len);
-      if ( written < 0 ) {
-        break;
-      }
-      write_off += written;
-      write_buf = &message[write_off];
-    }
-
-    if (written < 0) {
-      ST(0) = sv_newmortal();
-      sv_setnv( ST(0), (unsigned long) -1);
-    }
-    else {
-      ST(0) = sv_newmortal();
-      sv_setnv( ST(0), (unsigned long) write_off);
-    }
-    Safefree(message);
-
-ssize_t
-phantom_read(fileno)
-    int fileno
-  PREINIT:
-    int buf_size=131072;
-  CODE:
-    RETVAL = read(fileno, NULL, buf_size);
-  OUTPUT:
-    RETVAL
-
-SV *
 parse_message(buf_sv, res_av)
     SV * buf_sv
     AV * res_av
@@ -492,136 +346,120 @@ parse_message(buf_sv, res_av)
     RETVAL
 
 SV *
-read_message(fileno, timeout, av_list, required)
-    int fileno
-    double timeout
-    AV * av_list
-    ssize_t required
-  ALIAS:
-    Redis::Jet::read_message = 0
-    Redis::Jet::read_message_utf8 = 1
-  PREINIT:
-    int has_error=0;
-    long int read_max=1024*16;
-    long int read_buf_len=0;
-    long int buf_len;
-    long int ret;
-    ssize_t parse_result;
-    ssize_t parse_offset = 0;
-    char *read_buf;
-    AV *data_av;
-    fd_set rfds;
-    struct timeval tv;
-  CODE:
-    Newx(read_buf, read_max, char);
-    buf_len = read_max;
-    while (1) {
-      ret = _read_timeout(fileno, timeout, &read_buf[read_buf_len], read_max);
-      if ( ret < 0 ) {
-        /* timeout */
-        has_error = -2;
-        goto do_result;
-      }
-      read_buf_len += ret;
-      while ( read_buf_len > parse_offset ) {
-        data_av = newAV();
-        parse_result = _parse_message(aTHX_ &read_buf[parse_offset], read_buf_len - parse_offset, data_av, ix);
-        if ( parse_result == -1 ) {
-          /* corruption */
-          has_error = -1;
-          goto do_result;
-        }
-        else if ( parse_result == -2 ) {
-          break;
-        }
-        else {
-          parse_offset += parse_result;
-          av_push(av_list, newRV_noinc((SV *) data_av));
-        }
-      }
-      if ( av_len(av_list) + 1 >= required ) {
-        break;
-      }
-      renewmem(aTHX_ &read_buf, &buf_len, read_buf_len + read_max);
-
-    }
-    do_result:
-    /*
-     == -2 timeout or connection error
-     == -1 message corruption
-    */
-    if ( has_error < 0 ) {
-      RETVAL = newSViv(has_error);
-    }
-    else {
-      RETVAL = newSViv(read_buf_len);
-    }
-    Safefree(read_buf);
-  OUTPUT:
-    RETVAL
-
-void
 run_command(self,...)
     HV * self
   PREINIT:
-    int fileno;
-    int utf8;
-    double timeout;
-    int noreply;
-    ssize_t i;
-    ssize_t message_len = 1024;
-    ssize_t write_off;
-    ssize_t write_len;
-    ssize_t buf_len;
-    ssize_t command_len;
-    AV * req_list;
-    AV * res_list;
     AV * data_av;
-    char * message;
-    char * read_buf;
-    char * write_buf;
-    long int read_max=1024*16;
-    long int read_buf_len=0;
+    ssize_t i, j;
     long int ret;
-    ssize_t parse_result;
-    ssize_t parse_offset = 0;
+    /* arg */
+    int fileno, utf8, noreply;
+    double timeout;
+    /* build */
+    int args_offset = 1;
+    int fig;
+    ssize_t pipeline_len = 1;
+    ssize_t request_buf_len = 1024;
+    ssize_t request_len = 0;
+    STRLEN request_arg_len;
+    char * request;
+    char * request_arg;
+    AV * request_arg_list;
+    /* send */
+    ssize_t written;
+    char * write_buf;
+    /* response */
+    ssize_t read_max = 16*1024;
+    ssize_t read_buf_len;
+    ssize_t readed;
+    ssize_t parse_offset;
+    ssize_t parsed_response;
+    long int parse_result;
+    char * read_buf;
+    struct jet_response_st * response_st;
   PPCODE:
-    Newx(message, message_len, char);
-    Newx(read_buf, read_max, char);
+    Newx(request, request_buf_len, char);
 
     fileno = SvIV(*hv_fetch(self, "fileno", strlen("fileno"), 0));
     utf8 = SvIV(*hv_fetch(self, "utf8", strlen("utf8"), 0));
     timeout = SvNV(*hv_fetch(self, "timeout", strlen("timeout"), 0));;
     noreply = SvIV(*hv_fetch(self, "noreply", strlen("noreply"), 0));
 
-    // printf("fileno:%d utf8:%d timeout:%f noreply:%d\n", fileno, utf8, timeout, noreply);
-
-    res_list = newAV();
-    req_list = newAV();
-
-    for (i=1; i < items; i++ ) {
-      av_push(req_list, ST(i));
+    /* build_message */
+    if ( SvOK(ST(args_offset)) && SvROK(ST(args_offset))
+        && SvTYPE(SvRV(ST(args_offset))) == SVt_PVAV ) {
+      /* build_request([qw/set foo bar/],[qw/set bar baz/]) */
+      pipeline_len = items - args_offset;
+      for( i=args_offset; i < items; i++ ) {
+        request_arg_list = (AV *)SvRV(ST(i));
+        fig = (int)log10(av_len(request_arg_list)+1) + 1;
+        /* 1(*) + fig + 2(crlf)  */
+        renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2);
+        request[request_len++] = '*';
+        memcat_i(request, &request_len, av_len(request_arg_list)+1);
+        request[request_len++] = 13; // \r
+        request[request_len++] = 10; // \n
+        for (j=0; j<av_len(request_arg_list)+1; j++) {
+          request_arg = svpv2char(aTHX_ *av_fetch(request_arg_list,j,0), &request_arg_len, utf8);
+          fig = (int)log10(request_arg_len) + 1;
+          /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
+          renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2 + request_arg_len + 2);
+          request[request_len++] = '$';
+          memcat_i(request, &request_len, request_arg_len);
+          request[request_len++] = 13; // \r
+          request[request_len++] = 10; // \n
+          memcat(request, &request_len, request_arg, request_arg_len);
+          request[request_len++] = 13; // \r
+          request[request_len++] = 10; // \n
+        }
+      }
     }
-    command_len = _build_message(aTHX_ message, &message_len, req_list, utf8);
-    write_off = 0;
-    write_buf = &message[0];
-    while ( (write_len = message_len - write_off) > 0 ) {
-      ret = _write_timeout(fileno, timeout, write_buf, write_len);
+    else {
+      /* build_request(qw/set bar baz/) */
+      fig = (int)log10(items-args_offset) + 1;
+      /* 1(*) + fig + 2(crlf)  */
+      renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2);
+      request[request_len++] = '*';
+      memcat_i(request, &request_len, items-args_offset);
+      request[request_len++] = 13; // \r
+      request[request_len++] = 10; // \n
+      for (j=args_offset; j<items; j++) {
+        request_arg = svpv2char(aTHX_ ST(j), &request_arg_len, utf8);
+        fig = (int)log10(request_arg_len) + 1;
+        /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
+        renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2 + request_arg_len + 2);
+        request[request_len++] = '$';
+        memcat_i(request, &request_len, request_arg_len);
+        request[request_len++] = 13; // \r
+        request[request_len++] = 10; // \n
+        memcat(request, &request_len, request_arg, request_arg_len);
+        request[request_len++] = 13; // \r
+        request[request_len++] = 10; // \n
+      }
+    }
+    // printf("==%s--\n",&request[0]);
+    // printf("pipeline_len:%d,%d,%ld\n",args_offset,items,pipeline_len);
+    /* send request */
+    written = 0;
+    write_buf = &request[0];
+    while ( request_len > written ) {
+      ret = _write_timeout(fileno, timeout, write_buf, request_len - written);
       if ( ret < 0 ) {
         break;
       }
-      write_off += ret;
-      write_buf = &message[write_off];
+      written += ret;
+      write_buf = &request[written];
     }
-
+    /* request done */
+    Safefree(request);
+    EXTEND(SP, pipeline_len);
+    /* request error */
     if (ret < 0) {
-      /* error */
-      // av_clear(res_list);
-      data_av = newAV();
-      (void)av_push(data_av, &PL_sv_undef);
-      (void)av_push(data_av, newSVpvf("failed to send message: %s", ( errno != 0 ) ? strerror(errno) : "timeout"));
-      for (i=0; i<command_len; i++) {
-        (void)av_push(res_list, newRV_noinc((SV *) data_av));
+      for (i=0; i<pipeline_len; i++) {
+        data_av = newAV(); // (AV*)sv_2mortal((SV*)newAV());
+        (void)av_push(data_av, &PL_sv_undef);
+        (void)av_push(data_av, newSVpvf("failed to send message: %s", ( errno != 0 ) ? strerror(errno) : "timeout"));
+        PUSHs( sv_2mortal(newRV_noinc((SV *) data_av)) );
       }
       (void)hv_delete(self, "fileno", strlen("fileno"), 0);
       (void)hv_delete(self, "sock", strlen("socket"), 0);
@@ -629,66 +467,69 @@ run_command(self,...)
     }
     if ( noreply > 0 ) {
       ret = read(fileno, NULL, read_max);
-      // av_clear(res_list);
-      data_av = newAV();
-      (void)av_push(data_av, newSVpv("0 but true",0));
-      for (i=0; i<command_len; i++) {
-        (void)av_push(res_list, newRV_noinc((SV *) data_av));
+      for (i=0; i<pipeline_len; i++) {
+        data_av = newAV(); // (AV*)sv_2mortal((SV*)newAV());
+        (void)av_push(data_av, newSVpvn("0 but true",10));
+        PUSHs( sv_2mortal(newRV_noinc((SV *) data_av)) );
       }
       goto COMMAND_DONE;
     }
-    /* read_response */
-    buf_len = read_max;
+
+    /* read response */
+    read_buf_len = read_max;
+    Newx(read_buf, read_buf_len, char);
+    Newx(response_st, sizeof(struct jet_response_st)*pipeline_len, struct jet_response_st);
+    parsed_response=0;
+    parse_offset=0;
+    readed = 0;
     while (1) {
-      ret = _read_timeout(fileno, timeout, &read_buf[read_buf_len], read_max);
+      ret = _read_timeout(fileno, timeout, &read_buf[readed], read_max);
       if ( ret < 0 ) {
         /* timeout or error */
-        av_clear(res_list);
         data_av = newAV();
         (void)av_push(data_av, &PL_sv_undef);
         (void)av_push(data_av, newSVpvf("failed to read message: %s", ( errno != 0 ) ? strerror(errno) : "timeout"));
-        for (i=0; i<command_len; i++) {
-          (void)av_push(res_list, newRV_noinc((SV *) data_av));
+        for (i=0; i<pipeline_len; i++) {
+          response_st[i].data = data_av;
         }
         (void)hv_delete(self, "fileno", strlen("fileno"), 0);
         (void)hv_delete(self, "sock", strlen("socket"), 0);
-        goto COMMAND_DONE;
+        goto PARSER_DONE;
       }
-      read_buf_len += ret;
-      while ( read_buf_len > parse_offset ) {
+      readed += ret;
+      while ( readed > parse_offset ) {
         data_av = newAV();
-        parse_result = _parse_message(aTHX_ &read_buf[parse_offset], read_buf_len - parse_offset, data_av, utf8);
+        parse_result = _parse_message(aTHX_ &read_buf[parse_offset], readed - parse_offset, data_av, utf8);
         if ( parse_result == -1 ) {
           /* corruption */
-          av_clear(res_list);
           data_av = newAV();
           (void)av_push(data_av, &PL_sv_undef);
           (void)av_push(data_av, newSVpv("failed to read message: corrupted message found",0));
-          for (i=0; i<command_len; i++) {
-            (void)av_push(res_list, newRV_noinc((SV *) data_av));
+          for (i=0; i<pipeline_len; i++) {
+            response_st[i].data = data_av;
           }
           (void)hv_delete(self, "fileno", strlen("fileno"), 0);
           (void)hv_delete(self, "sock", strlen("socket"), 0);
-          goto COMMAND_DONE;
+          goto PARSER_DONE;
         }
         else if ( parse_result == -2 ) {
           break;
         }
         else {
           parse_offset += parse_result;
-          (void)av_push(res_list, newRV_noinc((SV *) data_av));
+          response_st[parsed_response++].data = data_av;
         }
       }
-      if ( av_len(res_list) + 1 >= command_len ) {
+      if ( parsed_response >= pipeline_len ) {
         break;
       }
-      renewmem(aTHX_ &read_buf, &buf_len, read_buf_len + read_max);
+      renewmem(aTHX_ &read_buf, &read_buf_len, readed + read_max);
     }
-    
-    COMMAND_DONE:
-    for (i=0; i<command_len; i++) {
-      SV **d = av_fetch(res_list,i,0);
-      XPUSHs(*d);
+    PARSER_DONE:
+    for (i=0; i<pipeline_len; i++) {
+      PUSHs( sv_2mortal(newRV_noinc((SV *)response_st[i].data)) );
     }
-    Safefree(message);
     Safefree(read_buf);
+    Safefree(response_st);
+    COMMAND_DONE:
+    XSRETURN(pipeline_len);
