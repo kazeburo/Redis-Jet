@@ -628,7 +628,7 @@ run_command(self,...)
       goto COMMAND_DONE;
     }
     if ( noreply > 0 ) {
-      (void)read(fileno, NULL, read_max);
+      ret = read(fileno, NULL, read_max);
       // av_clear(res_list);
       data_av = newAV();
       (void)av_push(data_av, newSVpv("0 but true",0));
