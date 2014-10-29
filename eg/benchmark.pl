@@ -34,7 +34,7 @@ cmpthese(
             my $val = $fast->get('foo');
         },
         jet => sub {
-            my $data = $jet->command(qw/get foo/);
+            my $val = $jet->command(qw/get foo/);
         },
         jet_direct => sub {
             Redis::Jet::send_message($fileno, 10, qw/get foo/);
@@ -57,19 +57,19 @@ cmpthese(
             my $val = $fast->incr('incrfoo');
         },
         jet => sub {
-            my $data = $jet->command(qw/incr incrfoo/);
+            my $val = $jet->command(qw/incr incrfoo/);
         },
         jet_direct => sub {
             Redis::Jet::send_message($fileno, 10, qw/incr incrfoo/);
             my @res;
             Redis::Jet::read_message($fileno, 10, \@res, 1);
-            my $data = $res[0];
+            my $val = $res[0];
         },
         jet_noreply => sub {
             $jet_noreply->command(qw/incr incrfoo/);
         },
         redis => sub {
-            my $data = $redis->incr('incrfoo');
+            my $val = $redis->incr('incrfoo');
         },
     }
 );
@@ -81,6 +81,8 @@ cmpthese(
     -1,
     {
         fast => sub {
+            my @res;
+            my $cb = sub { push @res, \@_ };
             $fast->del('user-fail',$cb);
             $fast->del('ip-fail',$cb);
             $fast->lpush('user-log','xxxxxxxxxxx',$cb);
@@ -88,7 +90,7 @@ cmpthese(
             $fast->wait_all_responses;
         },
         jet => sub {
-            my $val = $jet->command(
+            my @res = $jet->command(
                 [qw/del user-fail/],
                 [qw/del ip-fail/],
                 [qw/lpush user-log xxxxxxxxxxx/],
@@ -104,7 +106,6 @@ cmpthese(
             );
             my @res;
             Redis::Jet::read_message($fileno, 10, \@res, 1);
-            my $data = $res[0];
         },
 
         jet_noreply => sub {
@@ -116,6 +117,8 @@ cmpthese(
             );
         },
         redis => sub {
+            my @res;
+            my $cb = sub { push @res, \@_ };
             $redis->del('user-fail',$cb);
             $redis->del('ip-fail',$cb);
             $redis->lpush('user-log','xxxxxxxxxxx',$cb);

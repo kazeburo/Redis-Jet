@@ -96,7 +96,7 @@ _av_push(pTHX_ AV * data_av, const char * buf, const ssize_t copy_len, const int
 }
 
 static
-void
+ssize_t
 _build_message(pTHX_ char * dest, ssize_t * dest_size, AV * av_list, const int utf8) {
   STRLEN command_arg_len;
   char *command_arg_src;
@@ -104,12 +104,14 @@ _build_message(pTHX_ char * dest, ssize_t * dest_size, AV * av_list, const int u
   ssize_t i;
   ssize_t j;
   ssize_t fig = 0;
+  ssize_t command_len = 1;
   AV * a_list;
   SV *command_arg;
   
   if ( SvOK(*av_fetch(av_list,0,0)) && SvROK(*av_fetch(av_list,0,0))
   && SvTYPE(SvRV(*av_fetch(av_list,0,0))) == SVt_PVAV ) {
     /* build_request([qw/set foo bar/],[qw/set bar baz/]) */
+    command_len = av_len(av_list)+1;
     for( j=0; j < av_len(av_list)+1; j++ ) {
       a_list = (AV *)SvRV(*av_fetch(av_list,j,0));
       fig = (int)log10(av_len(a_list)+1) + 1;
@@ -163,6 +165,7 @@ _build_message(pTHX_ char * dest, ssize_t * dest_size, AV * av_list, const int u
     }
   }
   *dest_size = dest_len;
+  return command_len;
 }
 
 /*
@@ -544,7 +547,7 @@ read_message(fileno, timeout, av_list, required)
     }
     do_result:
     /*
-     == -2 timeout
+     == -2 timeout or connection error
      == -1 message corruption
     */
     if ( has_error < 0 ) {
@@ -557,8 +560,135 @@ read_message(fileno, timeout, av_list, required)
   OUTPUT:
     RETVAL
 
+void
+run_command(self,...)
+    HV * self
+  PREINIT:
+    int fileno;
+    int utf8;
+    double timeout;
+    int noreply;
+    ssize_t i;
+    ssize_t message_len = 1024;
+    ssize_t write_off;
+    ssize_t write_len;
+    ssize_t buf_len;
+    ssize_t command_len;
+    AV * req_list;
+    AV * res_list;
+    AV * data_av;
+    char * message;
+    char * read_buf;
+    char * write_buf;
+    long int read_max=1024*16;
+    long int read_buf_len=0;
+    long int ret;
+    ssize_t parse_result;
+    ssize_t parse_offset = 0;
+  PPCODE:
+    Newx(message, message_len, char);
+    Newx(read_buf, read_max, char);
 
+    fileno = SvIV(*hv_fetch(self, "fileno", strlen("fileno"), 0));
+    utf8 = SvIV(*hv_fetch(self, "utf8", strlen("utf8"), 0));
+    timeout = SvNV(*hv_fetch(self, "timeout", strlen("timeout"), 0));;
+    noreply = SvIV(*hv_fetch(self, "noreply", strlen("noreply"), 0));
 
+    // printf("fileno:%d utf8:%d timeout:%f noreply:%d\n", fileno, utf8, timeout, noreply);
 
+    res_list = newAV();
+    req_list = newAV();
 
+    for (i=1; i < items; i++ ) {
+      av_push(req_list, ST(i));
+    }
+    command_len = _build_message(aTHX_ message, &message_len, req_list, utf8);
+    write_off = 0;
+    write_buf = &message[0];
+    while ( (write_len = message_len - write_off) > 0 ) {
+      ret = _write_timeout(fileno, timeout, write_buf, write_len);
+      if ( ret < 0 ) {
+        break;
+      }
+      write_off += ret;
+      write_buf = &message[write_off];
+    }
 
+    if (ret < 0) {
+      /* error */
+      // av_clear(res_list);
+      data_av = newAV();
+      (void)av_push(data_av, &PL_sv_undef);
+      (void)av_push(data_av, newSVpvf("failed to send message: %s", ( errno != 0 ) ? strerror(errno) : "timeout"));
+      for (i=0; i<command_len; i++) {
+        (void)av_push(res_list, newRV_noinc((SV *) data_av));
+      }
+      (void)hv_delete(self, "fileno", strlen("fileno"), 0);
+      (void)hv_delete(self, "sock", strlen("socket"), 0);
+      goto COMMAND_DONE;
+    }
+    if ( noreply > 0 ) {
+      read(fileno, NULL, read_max);
+      // av_clear(res_list);
+      data_av = newAV();
+      (void)av_push(data_av, newSVpv("0 but true",0));
+      for (i=0; i<command_len; i++) {
+        (void)av_push(res_list, newRV_noinc((SV *) data_av));
+      }
+      goto COMMAND_DONE;
+    }
+    /* read_response */
+    buf_len = read_max;
+    while (1) {
+      ret = _read_timeout(fileno, timeout, &read_buf[read_buf_len], read_max);
+      if ( ret < 0 ) {
+        /* timeout or error */
+        av_clear(res_list);
+        data_av = newAV();
+        (void)av_push(data_av, &PL_sv_undef);
+        (void)av_push(data_av, newSVpvf("failed to read message: %s", ( errno != 0 ) ? strerror(errno) : "timeout"));
+        for (i=0; i<command_len; i++) {
+          (void)av_push(res_list, newRV_noinc((SV *) data_av));
+        }
+        (void)hv_delete(self, "fileno", strlen("fileno"), 0);
+        (void)hv_delete(self, "sock", strlen("socket"), 0);
+        goto COMMAND_DONE;
+      }
+      read_buf_len += ret;
+      while ( read_buf_len > parse_offset ) {
+        data_av = newAV();
+        parse_result = _parse_message(aTHX_ &read_buf[parse_offset], read_buf_len - parse_offset, data_av, utf8);
+        if ( parse_result == -1 ) {
+          /* corruption */
+          av_clear(res_list);
+          data_av = newAV();
+          (void)av_push(data_av, &PL_sv_undef);
+          (void)av_push(data_av, newSVpv("failed to read message: corrupted message found",0));
+          for (i=0; i<command_len; i++) {
+            (void)av_push(res_list, newRV_noinc((SV *) data_av));
+          }
+          (void)hv_delete(self, "fileno", strlen("fileno"), 0);
+          (void)hv_delete(self, "sock", strlen("socket"), 0);
+          goto COMMAND_DONE;
+        }
+        else if ( parse_result == -2 ) {
+          break;
+        }
+        else {
+          parse_offset += parse_result;
+          (void)av_push(res_list, newRV_noinc((SV *) data_av));
+        }
+      }
+      if ( av_len(res_list) + 1 >= command_len ) {
+        break;
+      }
+      renewmem(aTHX_ &read_buf, &buf_len, read_buf_len + read_max);
+    }
+    
+    COMMAND_DONE:
+    for (i=0; i<command_len; i++) {
+      SV **d = av_fetch(res_list,i,0);
+      XPUSHs(*d);
+    }
+    Safefree(message);
+    Safefree(read_buf);

@@ -62,38 +62,11 @@ sub res_error {
 sub command {
     my $self = shift;
     return unless @_;
-    my $cmds = 1;
-    if ( ref $_[0] eq 'ARRAY' ) {
-        $cmds = @_;
+    if ( !$self->{fileno} ) {
+        $self->connect;
+        $self->{fileno} or return $self->res_error('cannot connect to redis server: '. (($!) ? "$!" : "timeout"));
     }
-    my $fileno = $self->{fileno};
-    if ( !$fileno ) {
-        my $socket = $self->connect
-            or return $self->res_error('cannot connect to redis server: '. (($!) ? "$!" : "timeout"));
-        $fileno = fileno($socket);
-    }
-    my $sended = $self->{utf8}
-        ? send_message_utf8($fileno, $self->{timeout}, @_)
-        : send_message($fileno, $self->{timeout}, @_);
-    if ( $sended < 0 ) {
-        return $self->res_error('failed to send message: '. (($!) ? "$!" : "timeout"));
-    }
-    if ( $self->{noreply} ) {
-        phantom_read($fileno) if rand($self->{noreply}) == 0; 
-        return ["0 but true"];
-    }
-    my @res;
-    my $res = $self->{utf8}
-        ? read_message_utf8($fileno, $self->{timeout}, \@res, $cmds)
-        : read_message($fileno, $self->{timeout}, \@res, $cmds);
-    if ( $res == -1 ) {
-        return $self->res_error('failed to read message: message corruption');
-    }
-    if ( $res == -2 ) {
-        return $self->res_error('failed to read message: '. (($!) ? "$!" : "timeout"));
-    }
-    return $res[0] if $cmds == 1;
-    @res;
+    run_command($self, @_);
 }
 
 
