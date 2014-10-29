@@ -19,6 +19,29 @@ struct jet_response_st
   AV *data;
 };
 
+
+static
+int
+hv_fetch_iv(pTHX_ HV * hv, const char * key, const int defaultval ) {
+  SV **ssv = hv_fetch(hv, key, strlen(key), 0);
+  if (ssv) {
+    return SvIV(*ssv);
+  }
+  return defaultval;
+}
+
+static
+double
+hv_fetch_nv(pTHX_ HV * hv, const char * key, const double defaultval ) {
+  SV **ssv = hv_fetch(hv, key, strlen(key), 0);
+  if (ssv) {
+    return SvNV(*ssv);
+  }
+  return defaultval;
+}
+
+
+
 static
 void
 memcat( char * dst, ssize_t *dst_len, const char * src, const ssize_t src_len ) {
@@ -380,10 +403,11 @@ run_command(self,...)
   PPCODE:
     Newx(request, request_buf_len, char);
 
-    fileno = SvIV(*hv_fetch(self, "fileno", strlen("fileno"), 0));
-    utf8 = SvIV(*hv_fetch(self, "utf8", strlen("utf8"), 0));
-    timeout = SvNV(*hv_fetch(self, "timeout", strlen("timeout"), 0));;
-    noreply = SvIV(*hv_fetch(self, "noreply", strlen("noreply"), 0));
+    fileno = hv_fetch_iv(aTHX_ self,"fileno",0);
+    utf8 = hv_fetch_iv(aTHX_ self, "utf8", 0);
+    timeout = hv_fetch_nv(aTHX_ self, "timeout", 10);
+    noreply = hv_fetch_iv(aTHX_ self, "noreply", 0);
+    // printf("fileno:%d,utf8:%d,timeout:%f,noreply:%d\n",fileno,utf8,timeout,noreply);
 
     /* build_message */
     if ( SvOK(ST(args_offset)) && SvROK(ST(args_offset))
@@ -452,6 +476,7 @@ run_command(self,...)
     }
     /* request done */
     Safefree(request);
+    
     EXTEND(SP, pipeline_len);
     /* request error */
     if (ret <= 0) {
