@@ -446,7 +446,7 @@ run_command(self,...)
 
     fileno = hv_fetch_iv(aTHX_ self,"fileno",0);
     utf8 = hv_fetch_iv(aTHX_ self, "utf8", 0);
-    timeout = hv_fetch_nv(aTHX_ self, "timeout", 10);
+    timeout = hv_fetch_nv(aTHX_ self, "io_timeout", 10);
     noreply = hv_fetch_iv(aTHX_ self, "noreply", 0);
 
     // printf("ix:%d,fileno:%d,utf8:%d,timeout:%f,noreply:%d\n",ix,fileno,utf8,timeout,noreply);

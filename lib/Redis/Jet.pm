@@ -24,7 +24,8 @@ sub new {
     my %args = ref $_ ? %{$_[0]} : @_;
     %args = (
         server => '127.0.0.1:6379',
-        timeout => 10,
+        connect_timeout => 5,
+        io_timeout => 1,
         utf8 => 0,
         noreply => 0,
         %args,
@@ -39,7 +40,7 @@ sub connect {
     return $self->{sock} if $self->{sock};
     my $socket = IO::Socket::INET->new(
         PeerAddr => $self->{server},
-        Timeout => $self->{timeout},
+        Timeout => $self->{connect_timeout},
     ) or return;
     $socket->setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
         or die "setsockopt(TCP_NODELAY) failed:$!";
@@ -90,15 +91,80 @@ __END__
 
 =head1 NAME
 
-Redis::Jet - It's new $module
+Redis::Jet - Yet another XS implemented Redis Client
 
 =head1 SYNOPSIS
 
     use Redis::Jet;
+    
+    my $jet = Redis::Jet->new( server => 'localhost:6379' );
+    my $ret = $jet->command(qw/set redis data-server/); # $ret eq 'OK'
+    my $value = $jet->command(qw/get redis/); # $value eq 'data-server'
+    
+    my $ret = $jet->command(qw/set memcached cache-server/);
+    my $values = $jet->command(qw/mget redis memcached mysql/);
+    # $values eq ['data-server','memcached',undef]
+    
+    ## error handling
+    ($values,$error) = $jet->command(qw/get redis memcached mysql/);
+    # $error eq q!ERR wrong number of arguments for 'get' command!
+
+    ## pipeline
+    my @values = $jet->pipeline([qw/get redis/],[qw/get memcached/]);
+    # \@values = [['data-server'],['cache-server']]
+
+    my @values = $jet->pipeline([qw/get redis/],[qw/get memcached mysql/]);
+    # \@values = [['data-server'],[undef,q!ERR wrong...!]]
 
 =head1 DESCRIPTION
 
-Redis::Jet is ...
+This is project is still in a very early development stage.
+IT IS NOT READY FOR PRODUCTION!
+
+Redis::Jet is yet another XS implemented Redis Client. This module provides
+simple interfaces to communicate with Redis server
+
+=head1 METHODS
+
+=over 4
+
+=item C<< my $obj = Redis::Jet->new(%args) >>
+
+Create a new instance.
+
+=over 4
+
+=item C<< server => "server:port" >>
+
+server address and port
+
+=item connect_timeout
+
+Time seconds to wait for establish connection. default: 5
+
+=item io_timeout
+
+Time seconds to wait for send request and read response. default: 1
+
+=item utf8
+
+If enabled, Redis::Jet does encode/decode strings. default: 0 (false)
+
+=item noreply
+
+IF enabled. The instance does not parse any responses. Every responses to be C<"0 but true">. default: 0 (false)
+
+=back
+
+=item C<< ($value,[$error]) = $obj->command($command,$args,$args) >>
+
+send a command and retrieve a value
+
+=item C<< @values = $obj->pipeline([$command,$args,$args],[$command,$args,$args]) >>
+
+send several commands and retrieve values
+
+=back
 
 =head1 LICENSE
 

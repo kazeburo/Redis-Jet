@@ -1,5 +1,5 @@
 {
-   "abstract" : "It's new $module",
+   "abstract" : "Yet another XS implemented Redis Client",
    "author" : [
       "Masahiro Nagano <kazeburo@gmail.com>"
    ],
