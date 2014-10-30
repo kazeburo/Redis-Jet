@@ -53,6 +53,9 @@ sub res_error {
     my $self = shift;
     delete $self->{sock};
     delete $self->{fileno};
+    if ( @_ == 1 ) {
+        return (undef,$_[0]);
+    }
     my @res;
     push @res,[undef,$_[0]] for 1..$_[1];
     return @res;
@@ -68,7 +71,7 @@ sub command {
     run_command($self, @_);
 }
 
-sub pipeline_command {
+sub pipeline {
     my $self = shift;
     return unless @_;
     my $pipeline = @_;

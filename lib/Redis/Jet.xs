@@ -16,7 +16,7 @@ extern "C" {
 
 struct jet_response_st
 {
-  SV *data;
+  SV * data;
 };
 
 
@@ -131,7 +131,6 @@ _sv_store(pTHX_ SV * data_sv, char * buf, ssize_t copy_len, int utf8) {
     char * d;
     ssize_t i;
     ssize_t dlen = 0;
-    (void)SvUPGRADE(data_sv, SVt_PV);
     d = SvGROW(data_sv, copy_len);
     for (i=0; i<copy_len; i++){
         d[dlen++] = buf[i];
@@ -142,7 +141,6 @@ _sv_store(pTHX_ SV * data_sv, char * buf, ssize_t copy_len, int utf8) {
       SvUTF8_on(data_sv);
     }
 }
-
 
 /*
   == -2 incomplete
@@ -191,6 +189,7 @@ _parse_message(pTHX_ char * buf, const ssize_t buf_len, SV * data_sv, SV * error
     */
     if ( buf[1] == '-' && buf[2] == '1' ) {
       sv_setsv(data_sv, &PL_sv_undef);
+      sv_setsv(error_sv, &PL_sv_undef);
       return first_crlf + 2;
     }
     v_size = 0;
@@ -201,6 +200,7 @@ _parse_message(pTHX_ char * buf, const ssize_t buf_len, SV * data_sv, SV * error
       return -2;
     }
     _sv_store(aTHX_ data_sv, &buf[first_crlf+2], v_size, utf8);
+    sv_setsv(error_sv, &PL_sv_undef);
     return first_crlf+2+v_size+2;
   }
   else if ( buf[0] == '*' ) {
@@ -218,6 +218,7 @@ _parse_message(pTHX_ char * buf, const ssize_t buf_len, SV * data_sv, SV * error
     */
     if ( buf[1] == '-' && buf[2] == '1' ) {
       sv_setsv(data_sv, &PL_sv_undef);
+      sv_setsv(error_sv, &PL_sv_undef);
       return first_crlf + 2;
     }
     m_size = 0;
@@ -226,7 +227,8 @@ _parse_message(pTHX_ char * buf, const ssize_t buf_len, SV * data_sv, SV * error
     }
     av_list = newAV();
     if ( m_size == 0 ) {
-      sv_setsv(data_sv, newRV_noinc((SV *) av_list));
+      sv_setsv(data_sv, sv_2mortal(newRV_noinc((SV *) av_list)));
+      sv_setsv(error_sv, &PL_sv_undef);
       return first_crlf + 2;
     }
     m_buf = &buf[first_crlf + 2];
@@ -263,7 +265,8 @@ _parse_message(pTHX_ char * buf, const ssize_t buf_len, SV * data_sv, SV * error
     if ( av_len(av_list) + 1 < m_size ) {
       return -2;
     }
-    sv_setsv(data_sv, newRV_noinc((SV *) av_list));
+    sv_setsv(data_sv, sv_2mortal(newRV_noinc((SV *) av_list)));
+    sv_setsv(error_sv, &PL_sv_undef);
     return first_crlf + 2 + m_read;
   }
   else {
@@ -440,7 +443,7 @@ run_command(self,...)
     timeout = hv_fetch_nv(aTHX_ self, "timeout", 10);
     noreply = hv_fetch_iv(aTHX_ self, "noreply", 0);
 
-    // printf("fileno:%d,utf8:%d,timeout:%f,noreply:%d\n",fileno,utf8,timeout,noreply);
+    // printf("ix:%d,fileno:%d,utf8:%d,timeout:%f,noreply:%d\n",ix,fileno,utf8,timeout,noreply);
 
     /* build_message */
     if ( ix == 1 ) {
@@ -574,7 +577,12 @@ run_command(self,...)
     /* read response */
     read_buf_len = read_max;
     Newx(read_buf, read_buf_len, char);
-    Newx(response_st, sizeof(struct jet_response_st)*pipeline_len, struct jet_response_st);
+    if ( ix == 1 ) {
+      Newx(response_st, sizeof(struct jet_response_st)*pipeline_len, struct jet_response_st);
+    }
+    else {
+      Newx(response_st, sizeof(struct jet_response_st)*2, struct jet_response_st);
+    }
     parsed_response=0;
     parse_offset=0;
     readed = 0;
@@ -601,7 +609,9 @@ run_command(self,...)
       readed += ret;
       while ( readed > parse_offset ) {
         data_sv = newSV(0);
+        (void)SvUPGRADE(data_sv, SVt_PV);
         error_sv = newSV(0);
+        (void)SvUPGRADE(error_sv, SVt_PV);
         parse_result = _parse_message(aTHX_ &read_buf[parse_offset], readed - parse_offset, data_sv, error_sv, utf8);
         if ( parse_result == -1 ) {
           /* corruption */
@@ -629,7 +639,12 @@ run_command(self,...)
           if ( ix == 1 ) {
             data_av = newAV();
             av_push(data_av, data_sv);
-            av_push(data_av, error_sv);
+            if ( SvOK(error_sv) ) {
+              av_push(data_av, error_sv);
+            }
+            else {
+              sv_2mortal(error_sv);
+            }
             response_st[parsed_response++].data = newRV_noinc((SV*)data_av);
             if ( parsed_response >= pipeline_len ) {
               goto PARSER_DONE;
@@ -651,10 +666,15 @@ run_command(self,...)
       }
     }
     else {
-      PUSHs( sv_2mortal((SV *)response_st[0].data));
-      PUSHs( sv_2mortal((SV *)response_st[1].data));
+      PUSHs( sv_2mortal(response_st[0].data) );
+      if ( SvOK(response_st[1].data) ) {
+        PUSHs( sv_2mortal(response_st[1].data) );
+      }
+      else {
+        sv_2mortal(response_st[1].data);
+      }
     }
-    Safefree(read_buf);
     Safefree(response_st);
+    Safefree(read_buf);
     COMMAND_DONE:
-    XSRETURN(pipeline_len);
+

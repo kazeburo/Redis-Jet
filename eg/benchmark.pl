@@ -73,7 +73,7 @@ cmpthese(
             $fast->wait_all_responses;
         },
         jet => sub {
-            my @res = $jet->pipeline_command(
+            my @res = $jet->pipeline(
                 [qw/del user-fail/],
                 [qw/del ip-fail/],
                 [qw/lpush user-log xxxxxxxxxxx/],
@@ -81,7 +81,7 @@ cmpthese(
             );
         },
         jet_noreply => sub {
-            $jet_noreply->pipeline_command(
+            $jet_noreply->pipeline(
                 [qw/del user-fail/],
                 [qw/del ip-fail/],
                 [qw/lpush user-log xxxxxxxxxxx/],
