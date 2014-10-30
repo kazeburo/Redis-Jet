@@ -61,15 +61,22 @@ sub res_error {
 sub command {
     my $self = shift;
     return unless @_;
-    my $pipeline = 1;
-    if ( ref $_[0] eq "ARRAY") {
-        $pipeline = @_;
+    if ( !$self->{fileno} ) {
+        $self->connect;
+        $self->{fileno} or return $self->res_error('cannot connect to redis server: '. (($!) ? "$!" : "timeout"));
     }
+    run_command($self, @_);
+}
+
+sub pipeline_command {
+    my $self = shift;
+    return unless @_;
+    my $pipeline = @_;
     if ( !$self->{fileno} ) {
         $self->connect;
         $self->{fileno} or return $self->res_error('cannot connect to redis server: '. (($!) ? "$!" : "timeout"), $pipeline);
     }
-    run_command($self, @_);
+    run_command_pipeline($self, @_);
 }
 
 

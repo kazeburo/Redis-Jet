@@ -17,7 +17,8 @@ my $jet_noreply = Redis::Jet->new(noreply=>1);
 my @val = $jet->command(qw!set foo foovalue!);
 use Data::Dumper;
 say Dumper(\@val);
-say $fast->get('foo');
+say "fast:", $fast->get('foo');
+say "jet:", $jet->command(qw/get foo/);
 
 print "single get =======\n";
 
@@ -72,7 +73,7 @@ cmpthese(
             $fast->wait_all_responses;
         },
         jet => sub {
-            my @res = $jet->command(
+            my @res = $jet->pipeline_command(
                 [qw/del user-fail/],
                 [qw/del ip-fail/],
                 [qw/lpush user-log xxxxxxxxxxx/],
@@ -80,7 +81,7 @@ cmpthese(
             );
         },
         jet_noreply => sub {
-            $jet_noreply->command(
+            $jet_noreply->pipeline_command(
                 [qw/del user-fail/],
                 [qw/del ip-fail/],
                 [qw/lpush user-log xxxxxxxxxxx/],
