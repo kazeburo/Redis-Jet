@@ -47,7 +47,9 @@
       },
       "test" : {
          "requires" : {
-            "Test::More" : "0.98"
+            "Test::More" : "0.98",
+            "Test::RedisServer" : "0.14",
+            "Test::TCP" : "2"
          }
       }
    },

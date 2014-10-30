@@ -375,12 +375,11 @@ parse_message(buf_sv, res_av)
     buf = SvPV_nolen(buf_sv);
     readed = 0;
     while ( buf_len > 0 ) {
-      data_av = newAV();
       data_sv = newSV(0);
+      (void)SvUPGRADE(data_sv, SVt_PV);
       error_sv = newSV(0);
+      (void)SvUPGRADE(error_sv, SVt_PV);
       ret = _parse_message(aTHX_ buf, buf_len, data_sv, error_sv, ix);
-      av_push(data_av, data_sv);
-      av_push(data_av, error_sv);
       if ( ret == -1 ) {
         XSRETURN_UNDEF;
       }
@@ -388,6 +387,13 @@ parse_message(buf_sv, res_av)
         break;
       }
       else {
+        data_av = newAV();
+        av_push(data_av, data_sv);
+        if ( SvOK(error_sv) ) {
+          av_push(data_av, error_sv);
+        } else {
+          sv_2mortal(error_sv);
+        }
         av_push(res_av, newRV_noinc((SV *) data_av));
         readed += ret;
         buf_len -= ret;
