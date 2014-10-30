@@ -8,8 +8,11 @@ use Benchmark qw/cmpthese/;
 use Redis::Fast;
 use Redis::Jet;
 use Redis;
+use Redis::hiredis;
+
 
 my $redis = Redis->new;
+my $hiredis = Redis::hiredis->new(host=>'localhost',port=>'6379');
 my $fast = Redis::Fast->new;
 my $jet = Redis::Jet->new;
 my $jet_noreply = Redis::Jet->new(noreply=>1);
@@ -34,6 +37,9 @@ cmpthese(
         redis => sub {
             my $data = $redis->get('foo');
         },
+        hiredis => sub {
+            my $val = $hiredis->command(qw/get foo/);
+        },
     }
 );
 
@@ -53,6 +59,9 @@ cmpthese(
         },
         redis => sub {
             my $val = $redis->incr('incrfoo');
+        },
+        hiredis => sub {
+            my $val = $hiredis->command(qw/incr incrfoo/);
         },
     }
 );
