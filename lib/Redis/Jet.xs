@@ -6,6 +6,7 @@ extern "C" {
 #include <EXTERN.h>
 #include <perl.h>
 #include <XSUB.h>
+#include <poll.h>
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -279,8 +280,7 @@ ssize_t
 _write_timeout(const int fileno, const double timeout, char * write_buf, const int write_len ) {
     int rv;
     int nfound;
-    fd_set wfds;
-    struct timeval tv;
+    struct pollfd wfds[1];
   DO_WRITE:
     rv = write(fileno, write_buf, write_len);
     if ( rv >= 0 ) {
@@ -291,18 +291,15 @@ _write_timeout(const int fileno, const double timeout, char * write_buf, const i
     }
   WAIT_WRITE:
     while (1) {
-       FD_ZERO(&wfds);
-       FD_SET(fileno, &wfds);
-       tv.tv_sec = (int)timeout;
-       tv.tv_usec = (timeout - (int)timeout) * 1000000;
-       nfound = select(fileno+1, NULL, &wfds, NULL, &tv);
-       if ( nfound == 1 ) {
-         break;
-       }
-       if ( errno != EINTR ) {
-         return -1;
-       }
-
+      wfds[0].fd = fileno;
+      wfds[0].events = POLLOUT;
+      nfound = poll(wfds, 1, (int)timeout*1000);
+      if ( nfound == 1 ) {
+        break;
+      }
+      if ( nfound == 0 && errno != EINTR ) {
+        return -1;
+      }
     }
     goto DO_WRITE;
 }
@@ -313,9 +310,10 @@ ssize_t
 _read_timeout(const int fileno, const double timeout, char * read_buf, const int read_len ) {
     int rv;
     int nfound;
-    fd_set rfds;
-    struct timeval tv;
+    struct pollfd rfds[1];
   DO_READ:
+    rfds[0].fd = fileno;
+    rfds[0].events = POLLIN;
     rv = read(fileno, read_buf, read_len);
     if ( rv >= 0 ) {
       return rv;
@@ -325,17 +323,13 @@ _read_timeout(const int fileno, const double timeout, char * read_buf, const int
     }
   WAIT_READ:
     while (1) {
-       FD_ZERO(&rfds);
-       FD_SET(fileno, &rfds);
-       tv.tv_sec = (int)timeout;
-       tv.tv_usec = (timeout - (int)timeout) * 1000000;
-       nfound = select(fileno+1, &rfds, NULL, NULL, &tv);
-       if ( nfound == 1 ) {
-         break;
-       }
-       if ( errno != EINTR ) {
-         return -1;
-       }
+      nfound = poll(rfds, 1, (int)timeout*1000);
+      if ( nfound == 1 ) {
+        break;
+      }
+      if ( nfound == 0 && errno != EINTR ) {
+        return -1;
+      }
     }
     goto DO_READ;
 }
