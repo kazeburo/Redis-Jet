@@ -31,17 +31,6 @@ struct jet_response_st {
   SV * data;
 };
 
-static
-char *
-hv_fetch_char(pTHX_ HV * hv, const char * key, const char * defaultvalue ) {
-  SV **ssv = hv_fetch(hv, key, strlen(key), 0);
-  if (*ssv) {
-    SV *sv = *ssv;
-    return SvPV_nolen(sv);
-  }
-  return SvPV_nolen(newSVpv(defaultvalue,0));
-}
-
 
 static
 int
@@ -63,8 +52,6 @@ hv_fetch_nv(pTHX_ HV * hv, const char * key, const double defaultval ) {
   return defaultval;
 }
 
-
-
 static
 void
 memcat( char * dst, ssize_t *dst_len, const char * src, const ssize_t src_len ) {
@@ -74,16 +61,6 @@ memcat( char * dst, ssize_t *dst_len, const char * src, const ssize_t src_len ) 
         dst[dlen++] = src[i];
     }
     *dst_len = dlen;
-}
-
-static
-void
-memcopyset( char * dst, ssize_t dst_len, const char * src, const ssize_t src_len ) {
-    ssize_t i;
-    ssize_t dlen = dst_len;
-    for ( i=0; i<src_len; i++) {
-        dst[dlen++] = src[i];
-    }
 }
 
 static
@@ -387,7 +364,6 @@ _new(class, args)
       else {
         self->server = newSVpv("127.0.0.1:6379",0);
       }
-      // self->server = hv_fetch_char(aTHX_ (HV *)SvRV(args), "server", "127.0.0.1:6379");;
       self->utf8 = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "utf8", 0);
       self->connect_timeout = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "connect_timeout", 10);
       self->io_timeout = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "io_timeout", 10);

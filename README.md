@@ -65,7 +65,35 @@ simple interfaces to communicate with Redis server
 
 - `@values = $obj->pipeline([$command,$args,$args],[$command,$args,$args])`
 
-    send several commands and retrieve values
+    send several commands and retrieve values. each value has value and error string if error was occurred.
+
+# BENCHMARK
+
+    single get =======
+                Rate   redis    fast hiredis     jet
+    redis    45378/s      --    -59%    -71%    -74%
+    fast    111655/s    146%      --    -28%    -37%
+    hiredis 154429/s    240%     38%      --    -13%
+    jet     177292/s    291%     59%     15%      --
+    single incr =======
+                Rate   redis    fast hiredis     jet
+    redis    48830/s      --    -58%    -70%    -72%
+    fast    116381/s    138%      --    -29%    -33%
+    hiredis 163837/s    236%     41%      --     -6%
+    jet     174880/s    258%     50%      7%      --
+    pipeline =======
+              Rate redis  fast   jet
+    redis  15514/s    --  -73%  -87%
+    fast   57985/s  274%    --  -50%
+    jet   116536/s  651%  101%    --
+    
+    Physical server
+    Intel(R) Xeon(R) CPU E3-1240 v3 @ 3.40GHz | 4core/8thread    
+    redis-2.8.17
+    Perl-5.20.1
+    Redis 1.976
+    Redis::Fast 0.13
+    Redis::hiredis 0.11.0
 
 # LICENSE
 

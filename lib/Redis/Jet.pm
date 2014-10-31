@@ -33,8 +33,10 @@ sub new {
     $class->_new(\%args);
 }
 
-sub DESTROY {
-    $_[0]->_destroy();
+sub set_socket {
+    my ($self,$socket) = @_;
+    $self->get_bucket->{socket} = $socket;
+    $self->set_fileno(fileno($socket));
 }
 
 sub connect {
@@ -50,44 +52,8 @@ sub connect {
     $socket;
 }
 
-sub set_socket {
-    my ($self,$socket) = @_;
-    $self->get_bucket->{socket} = $socket;
-    $self->set_fileno(fileno($socket));
-}
-
-
-sub res_error3 {
-    my $self = shift;
-    delete $self->{sock};
-    delete $self->{fileno};
-    if ( @_ == 1 ) {
-        return (undef,$_[0]);
-    }
-    my @res;
-    push @res,[undef,$_[0]] for 1..$_[1];
-    return @res;
-}
-
-sub command3 {
-    my $self = shift;
-    return unless @_;
-    if ( !$self->{fileno} ) {
-        $self->connect;
-        $self->{fileno} or return $self->res_error('cannot connect to redis server: '. (($!) ? "$!" : "timeout"));
-    }
-    run_command($self, @_);
-}
-
-sub pipeline3 {
-    my $self = shift;
-    return unless @_;
-    my $pipeline = @_;
-    if ( !$self->{fileno} ) {
-        $self->connect;
-        $self->{fileno} or return $self->res_error('cannot connect to redis server: '. (($!) ? "$!" : "timeout"), $pipeline);
-    }
-    run_command_pipeline($self, @_);
+sub DESTROY {
+    $_[0]->_destroy();
 }
 
 
@@ -169,9 +135,48 @@ send a command and retrieve a value
 
 =item C<< @values = $obj->pipeline([$command,$args,$args],[$command,$args,$args]) >>
 
-send several commands and retrieve values
+send several commands and retrieve values. each value has value and error string if error was occurred.
 
 =back
+
+=head1 BENCHMARK
+
+    single get =======
+                Rate   redis    fast hiredis     jet
+    redis    45378/s      --    -59%    -71%    -74%
+    fast    111655/s    146%      --    -28%    -37%
+    hiredis 154429/s    240%     38%      --    -13%
+    jet     177292/s    291%     59%     15%      --
+    single incr =======
+                Rate   redis    fast hiredis     jet
+    redis    48830/s      --    -58%    -70%    -72%
+    fast    116381/s    138%      --    -29%    -33%
+    hiredis 163837/s    236%     41%      --     -6%
+    jet     174880/s    258%     50%      7%      --
+    pipeline =======
+              Rate redis  fast   jet
+    redis  15514/s    --  -73%  -87%
+    fast   57985/s  274%    --  -50%
+    jet   116536/s  651%  101%    --
+    
+    Physical server
+    Intel(R) Xeon(R) CPU E3-1240 v3 @ 3.40GHz | 4core/8thread    
+    redis-2.8.17
+    Perl-5.20.1
+    Redis 1.976
+    Redis::Fast 0.13
+    Redis::hiredis 0.11.0
+
+=head1 SEE ALSO
+
+
+* L<Redis>
+
+* L<Redis::Fast>
+
+* L<Redis::hiredis>
+
+* http://redis.io/
 
 =head1 LICENSE
 
