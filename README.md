@@ -95,6 +95,16 @@ simple interfaces to communicate with Redis server
     Redis::Fast 0.13
     Redis::hiredis 0.11.0
 
+# SEE ALSO
+
+\* [Redis](https://metacpan.org/pod/Redis)
+
+\* [Redis::Fast](https://metacpan.org/pod/Redis::Fast)
+
+\* [Redis::hiredis](https://metacpan.org/pod/Redis::hiredis)
+
+\* http://redis.io/
+
 # LICENSE
 
 Copyright (C) Masahiro Nagano.

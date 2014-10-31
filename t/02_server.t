@@ -27,6 +27,12 @@ test_tcp(
 
         is($jet->command(qw/set hoge/,''),'OK');
         is($jet->command(qw/get hoge/),'');
+
+        # large data
+        my $large_data = 'あいう' x 30*1024;
+        is($jet->command(qw/set large-foo/,$large_data),'OK');
+        is($jet->command(qw/get large-foo/),$large_data);        
+
     },
     server => sub {
         my ($port) = @_;
