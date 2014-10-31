@@ -103,7 +103,7 @@ memcat_i(char * dst, ssize_t *dst_len, ssize_t snum ) {
 
 static
 long int
-_index_crlf(char * buf, const ssize_t buf_len, ssize_t offset) {
+_index_crlf(const char * buf, const ssize_t buf_len, ssize_t offset) {
   ssize_t ret = -1;
   while( offset < buf_len -1 ) {
     if (buf[offset] == 13 && buf[offset+1] == 10 ) {
@@ -133,7 +133,7 @@ _sv_store(pTHX_ SV * data_sv, char * buf, ssize_t copy_len, int utf8) {
     ssize_t dlen = 0;
     d = SvGROW(data_sv, copy_len);
     for (i=0; i<copy_len; i++){
-        d[dlen++] = buf[i];
+      d[dlen++] = buf[i];
     }
     SvCUR_set(data_sv, dlen);
     SvPOK_only(data_sv);
@@ -276,13 +276,11 @@ _parse_message(pTHX_ char * buf, const ssize_t buf_len, SV * data_sv, SV * error
 
 static
 ssize_t
-_write_timeout(int fileno, double timeout, char * write_buf, int write_len ) {
+_write_timeout(const int fileno, const double timeout, char * write_buf, const int write_len ) {
     int rv;
     int nfound;
     fd_set wfds;
     struct timeval tv;
-    struct timeval tv_start;
-    struct timeval tv_end;
   DO_WRITE:
     rv = write(fileno, write_buf, write_len);
     if ( rv >= 0 ) {
@@ -297,17 +295,14 @@ _write_timeout(int fileno, double timeout, char * write_buf, int write_len ) {
        FD_SET(fileno, &wfds);
        tv.tv_sec = (int)timeout;
        tv.tv_usec = (timeout - (int)timeout) * 1000000;
-       gettimeofday(&tv_start, NULL);
        nfound = select(fileno+1, NULL, &wfds, NULL, &tv);
-       gettimeofday(&tv_end, NULL);
-       tv.tv_sec = tv_end.tv_sec - tv_start.tv_sec;
-       tv.tv_usec = tv_end.tv_usec - tv_start.tv_usec;
        if ( nfound == 1 ) {
          break;
        }
-       if ( tv.tv_sec <= 0 && tv.tv_usec <= 0 ) {
+       if ( errno != EINTR ) {
          return -1;
        }
+
     }
     goto DO_WRITE;
 }
@@ -315,13 +310,11 @@ _write_timeout(int fileno, double timeout, char * write_buf, int write_len ) {
 
 static
 ssize_t
-_read_timeout(int fileno, double timeout, char * read_buf, int read_len ) {
+_read_timeout(const int fileno, const double timeout, char * read_buf, const int read_len ) {
     int rv;
     int nfound;
     fd_set rfds;
     struct timeval tv;
-    struct timeval tv_start;
-    struct timeval tv_end;
   DO_READ:
     rv = read(fileno, read_buf, read_len);
     if ( rv >= 0 ) {
@@ -336,15 +329,11 @@ _read_timeout(int fileno, double timeout, char * read_buf, int read_len ) {
        FD_SET(fileno, &rfds);
        tv.tv_sec = (int)timeout;
        tv.tv_usec = (timeout - (int)timeout) * 1000000;
-       gettimeofday(&tv_start, NULL);
        nfound = select(fileno+1, &rfds, NULL, NULL, &tv);
-       gettimeofday(&tv_end, NULL);
-       tv.tv_sec = tv_end.tv_sec - tv_start.tv_sec;
-       tv.tv_usec = tv_end.tv_usec - tv_start.tv_usec;
        if ( nfound == 1 ) {
          break;
        }
-       if ( tv.tv_sec <= 0 && tv.tv_usec <= 0 ) {
+       if ( errno != EINTR ) {
          return -1;
        }
     }

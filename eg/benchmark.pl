@@ -22,6 +22,18 @@ use Data::Dumper;
 say Dumper(\@val);
 say "fast:", $fast->get('foo');
 say "jet:", $jet->command(qw/get foo/);
+my $args = {
+    utf8 => 0,
+    io_timeout => 1,
+    noreply => 0,
+    fileno => fileno($jet->connect)
+};
+my $args2 = {
+    utf8 => 0,
+    io_timeout => 1,
+    noreply => 1,
+    fileno => fileno($jet->connect)
+};
 
 print "single get =======\n";
 
@@ -33,6 +45,9 @@ cmpthese(
         },
         jet => sub {
             my $val = $jet->command(qw/get foo/);
+        },
+        jet_direct => sub {
+            my $val = Redis::Jet::run_command($args, qw/get foo/);
         },
         redis => sub {
             my $data = $redis->get('foo');
@@ -56,6 +71,9 @@ cmpthese(
         },
         jet_noreply => sub {
             $jet_noreply->command(qw/incr incrfoo/);
+        },
+        jet_direct_noreply => sub {
+            Redis::Jet::run_command($args2,qw/incr incrfoo/);
         },
         redis => sub {
             my $val = $redis->incr('incrfoo');
