@@ -1,0 +1,24 @@
+TYPEMAP
+Redis_Jet *      T_REDIS_JET
+
+
+INPUT
+T_REDIS_JET
+        /*
+          We disable the derived check because it's kinda useless but
+          slow.
+        */
+        if (1 || sv_derived_from($arg, \"Redis::Jet\"))
+          {
+            IV tmp = SvIV((SV *) SvRV($arg));
+            $var = INT2PTR(Redis_Jet *, tmp);
+          }
+        else
+          croak(\"$var is not of type Redis::Jet\");
+
+
+OUTPUT
+T_REDIS_JET
+        sv_setref_pv($arg, class, (void*) $var);
+
+
