@@ -7,6 +7,7 @@ extern "C" {
 #include <perl.h>
 #include <XSUB.h>
 #include <poll.h>
+#include <perlio.h>
 
 #ifdef __cplusplus
 } /* extern "C" */
@@ -15,10 +16,31 @@ extern "C" {
 #define NEED_newSVpvn_flags
 #include "ppport.h"
 
-struct jet_response_st
-{
+struct redis_jet_s {
+  SV * server;
+  double connect_timeout;
+  double io_timeout;
+  int utf8;
+  int noreply;
+  int fileno;
+  HV * bucket;
+};
+typedef struct redis_jet_s Redis_Jet;
+
+struct jet_response_st {
   SV * data;
 };
+
+static
+char *
+hv_fetch_char(pTHX_ HV * hv, const char * key, const char * defaultvalue ) {
+  SV **ssv = hv_fetch(hv, key, strlen(key), 0);
+  if (*ssv) {
+    SV *sv = *ssv;
+    return SvPV_nolen(sv);
+  }
+  return SvPV_nolen(newSVpv(defaultvalue,0));
+}
 
 
 static
@@ -334,9 +356,111 @@ _read_timeout(const int fileno, const double timeout, char * read_buf, const int
     goto DO_READ;
 }
 
+void
+disconnect_socket (pTHX_ Redis_Jet * self) {
+  self->fileno = 0;
+  if ( hv_exists(self->bucket, "socket", strlen("socket")) ) {
+    (void)hv_delete(self->bucket, "socket", strlen("socket"), 0);
+  }
+}
+
 MODULE = Redis::Jet    PACKAGE = Redis::Jet
 
 PROTOTYPES: DISABLE
+
+Redis_Jet *
+_new(class, args)
+    char * class
+    SV * args
+  PREINIT:
+    Redis_Jet * self;
+    STRLEN server_len;
+    char * s;
+    SV **server_ssv;
+  CODE:
+    Newxz(self, sizeof(Redis_Jet), Redis_Jet);
+    if ( SvTYPE(SvRV(args)) == SVt_PVHV) {
+      server_ssv = hv_fetch((HV *)SvRV(args), "server", strlen("server"),0);
+      if ( server_ssv ) {
+        self->server = newSVsv(*server_ssv);
+      }
+      else {
+        self->server = newSVpv("127.0.0.1:6379",0);
+      }
+      // self->server = hv_fetch_char(aTHX_ (HV *)SvRV(args), "server", "127.0.0.1:6379");;
+      self->utf8 = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "utf8", 0);
+      self->connect_timeout = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "connect_timeout", 10);
+      self->io_timeout = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "io_timeout", 10);
+      self->noreply = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "noreply", 0);
+      self->bucket = newHV();
+    }
+    RETVAL = self;
+  OUTPUT:
+    RETVAL
+
+HV *
+get_bucket(self)
+    Redis_Jet * self
+  CODE:
+    RETVAL = self->bucket;
+  OUTPUT:
+    RETVAL
+
+SV *
+get_server(self)
+    Redis_Jet * self
+  PREINIT:
+  PPCODE:
+    XPUSHs(self->server);
+
+
+double
+get_connect_timeout(self)
+    Redis_Jet * self
+  CODE:
+    RETVAL = self->connect_timeout;
+  OUTPUT:
+    RETVAL
+
+double
+get_io_timeout(self)
+    Redis_Jet * self
+  CODE:
+    RETVAL = self->io_timeout;
+  OUTPUT:
+    RETVAL
+
+int
+get_utf8(self)
+    Redis_Jet * self
+  CODE:
+    RETVAL = self->utf8;
+  OUTPUT:
+    RETVAL
+
+int
+get_noreply(self)
+    Redis_Jet * self
+  CODE:
+    RETVAL = self->noreply;
+  OUTPUT:
+    RETVAL
+
+int
+set_fileno(self,fileno)
+    Redis_Jet * self
+    int fileno
+  CODE:
+    RETVAL = self->fileno = fileno;
+  OUTPUT:
+    RETVAL
+
+SV *
+_destroy(self)
+    Redis_Jet * self
+  CODE:
+    disconnect_socket(self);
+    Safefree(self);
 
 SV *
 parse_message(buf_sv, res_av)
@@ -388,20 +512,17 @@ parse_message(buf_sv, res_av)
     RETVAL
 
 SV *
-run_command(self,...)
-    HV * self
+command(self,...)
+    Redis_Jet * self
   ALIAS:
-    Redis::Jet::run_command = 0
-    Redis::Jet::run_command_pipeline = 1
+    Redis::Jet::command = 0
+    Redis::Jet::pipeline = 1
   PREINIT:
     AV * data_av;
     SV * data_sv;
     SV * error_sv;
     ssize_t i, j;
     long int ret;
-    /* arg */
-    int fileno, utf8, noreply;
-    double timeout;
     /* build */
     int args_offset = 1;
     int fig;
@@ -425,16 +546,48 @@ run_command(self,...)
     char * read_buf;
     struct jet_response_st * response_st;
   PPCODE:
-    Newx(request, request_buf_len, char);
 
-    fileno = hv_fetch_iv(aTHX_ self,"fileno",0);
-    utf8 = hv_fetch_iv(aTHX_ self, "utf8", 0);
-    timeout = hv_fetch_nv(aTHX_ self, "io_timeout", 10);
-    noreply = hv_fetch_iv(aTHX_ self, "noreply", 0);
+    /* connect */
+    if ( self->fileno == 0 ) {
+      {
+        dSP;
+        ENTER;
+        SAVETMPS;
+        PUSHMARK(SP);
+        XPUSHs(ST(0));
+        PUTBACK;
+        call_method("connect", G_DISCARD);
+        FREETMPS;
+        LEAVE;
+      }
+      if ( self->fileno == 0 ) {
+        /* connection error */
+        if ( ix == 1 ) {
+          pipeline_len = items - args_offset;
+          EXTEND(SP, pipeline_len);
+          for (i=0; i<pipeline_len; i++) {
+            data_av = newAV();
+            (void)av_push(data_av, &PL_sv_undef);
+            (void)av_push(data_av, newSVpvf("failed to connect server: %s",
+              ( errno != 0 ) ? strerror(errno) : "timeout"));
+            PUSHs( sv_2mortal(newRV_noinc((SV *) data_av)) );
+          }
+        }
+        else {
+          EXTEND(SP, 2);
+          PUSHs(&PL_sv_undef);
+          PUSHs(sv_2mortal(newSVpvf("failed to connect server: %s",
+              ( errno != 0 ) ? strerror(errno) : "timeout")));
+        }
+        disconnect_socket(self);
+        goto COMMAND_DONE;
+      }
+    }
 
-    // printf("ix:%d,fileno:%d,utf8:%d,timeout:%f,noreply:%d\n",ix,fileno,utf8,timeout,noreply);
-
+    char * s = SvPV_nolen(ST(1));
+    // printf("ix:%d,fileno:%d,utf8:%d,timeout:%f,noreply:%d, items:%d %s\n",ix,self->fileno,self->utf8,self->io_timeout,self->noreply,items,&s[0]);
     /* build_message */
+    Newx(request, request_buf_len, char);
     if ( ix == 1 ) {
       /* build_request([qw/set foo bar/],[qw/set bar baz/]) */
       pipeline_len = items - args_offset;
@@ -449,7 +602,7 @@ run_command(self,...)
           request[request_len++] = 13; // \r
           request[request_len++] = 10; // \n
           for (j=0; j<av_len(request_arg_list)+1; j++) {
-            request_arg = svpv2char(aTHX_ *av_fetch(request_arg_list,j,0), &request_arg_len, utf8);
+            request_arg = svpv2char(aTHX_ *av_fetch(request_arg_list,j,0), &request_arg_len, self->utf8);
             fig = (int)log10(request_arg_len) + 1;
             /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
             renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2 + request_arg_len + 2);
@@ -469,7 +622,7 @@ run_command(self,...)
           request[request_len++] = '1';
           request[request_len++] = 13; // \r
           request[request_len++] = 10; // \n
-          request_arg = svpv2char(aTHX_ ST(i), &request_arg_len, utf8);
+          request_arg = svpv2char(aTHX_ ST(i), &request_arg_len, self->utf8);
           fig = (int)log10(request_arg_len) + 1;
           /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
           renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2 + request_arg_len + 2);
@@ -493,7 +646,7 @@ run_command(self,...)
       request[request_len++] = 13; // \r
       request[request_len++] = 10; // \n
       for (j=args_offset; j<items; j++) {
-        request_arg = svpv2char(aTHX_ ST(j), &request_arg_len, utf8);
+        request_arg = svpv2char(aTHX_ ST(j), &request_arg_len, self->utf8);
         fig = (int)log10(request_arg_len) + 1;
         /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
         renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2 + request_arg_len + 2);
@@ -513,7 +666,7 @@ run_command(self,...)
     written = 0;
     write_buf = &request[0];
     while ( request_len > written ) {
-      ret = _write_timeout(fileno, timeout, write_buf, request_len - written);
+      ret = _write_timeout(self->fileno, self->io_timeout, write_buf, request_len - written);
       if ( ret < 0 ) {
         break;
       }
@@ -530,6 +683,7 @@ run_command(self,...)
     }
     /* request error */
     if (ret <= 0) {
+      disconnect_socket(self);
       if ( ix == 1 ) {
         for (i=0; i<pipeline_len; i++) {
           data_av = newAV();
@@ -544,12 +698,10 @@ run_command(self,...)
         PUSHs(sv_2mortal(newSVpvf("failed to send message: %s",
             ( errno != 0 ) ? strerror(errno) : "timeout or disconnected")));
       }
-      (void)hv_delete(self, "fileno", strlen("fileno"), 0);
-      (void)hv_delete(self, "sock", strlen("socket"), 0);
       goto COMMAND_DONE;
     }
-    if ( noreply > 0 ) {
-      ret = read(fileno, NULL, read_max);
+    if ( self->noreply > 0 ) {
+      ret = read(self->fileno, NULL, read_max);
       if ( ix == 1 ) {
         for (i=0; i<pipeline_len; i++) {
           data_av = newAV();
@@ -576,9 +728,10 @@ run_command(self,...)
     parse_offset=0;
     readed = 0;
     while (1) {
-      ret = _read_timeout(fileno, timeout, &read_buf[readed], read_max);
+      ret = _read_timeout(self->fileno, self->io_timeout, &read_buf[readed], read_max);
       if ( ret <= 0 ) {
         /* timeout or error */
+        disconnect_socket(self);
         if ( ix == 1 ) {
           for (i=0; i<pipeline_len; i++) {
             data_av = newAV();
@@ -591,8 +744,6 @@ run_command(self,...)
           response_st[0].data = &PL_sv_undef;
           response_st[1].data = newSVpvf("failed to read message: %s", ( errno != 0 ) ? strerror(errno) : "timeout or disconnected");
         }
-        (void)hv_delete(self, "fileno", strlen("fileno"), 0);
-        (void)hv_delete(self, "sock", strlen("socket"), 0);
         goto PARSER_DONE;
       }
       readed += ret;
@@ -601,10 +752,11 @@ run_command(self,...)
         (void)SvUPGRADE(data_sv, SVt_PV);
         error_sv = newSV(0);
         (void)SvUPGRADE(error_sv, SVt_PV);
-        parse_result = _parse_message(aTHX_ &read_buf[parse_offset], readed - parse_offset, data_sv, error_sv, utf8);
+        parse_result = _parse_message(aTHX_ &read_buf[parse_offset], readed - parse_offset, data_sv, error_sv, self->utf8);
         if ( parse_result == -1 ) {
           /* corruption */
-         if ( ix == 1 ) {
+          disconnect_socket(self);
+          if ( ix == 1 ) {
             for (i=0; i<pipeline_len; i++) {
               data_av = newAV();
               (void)av_push(data_av, &PL_sv_undef);
@@ -616,8 +768,6 @@ run_command(self,...)
             response_st[0].data = &PL_sv_undef;
             response_st[1].data = newSVpv("failed to read message: corrupted message found",0);
           }
-          (void)hv_delete(self, "fileno", strlen("fileno"), 0);
-          (void)hv_delete(self, "sock", strlen("socket"), 0);
           goto PARSER_DONE;
         }
         else if ( parse_result == -2 ) {

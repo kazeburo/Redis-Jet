@@ -46,9 +46,6 @@ cmpthese(
         jet => sub {
             my $val = $jet->command(qw/get foo/);
         },
-        jet_direct => sub {
-            my $val = Redis::Jet::run_command($args, qw/get foo/);
-        },
         redis => sub {
             my $data = $redis->get('foo');
         },
@@ -71,9 +68,6 @@ cmpthese(
         },
         jet_noreply => sub {
             $jet_noreply->command(qw/incr incrfoo/);
-        },
-        jet_direct_noreply => sub {
-            Redis::Jet::run_command($args2,qw/incr incrfoo/);
         },
         redis => sub {
             my $val = $redis->incr('incrfoo');

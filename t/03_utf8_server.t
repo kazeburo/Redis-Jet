@@ -18,7 +18,7 @@ test_tcp(
         is_deeply([$jet->command(qw/get bar5/)],["\x{263A}"]);
 
         my $jet2 = Redis::Jet->new( server => 'localhost:'.$port, utf8 => 0 );
-        is($jet2->command(qw/set foo5/,"\xE5"),'OK');
+        is($jet2->command(qw/set foo5/,"\xE5"),'OK',"re-1");
         is($jet2->command(qw/set bar5/,"\x{263A}"),'OK');
         is($jet2->command(qw/get foo5/),"\xE5");
         is_deeply([$jet2->command(qw/get foo5/)],["\xE5"]);

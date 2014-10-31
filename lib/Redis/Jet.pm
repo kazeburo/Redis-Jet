@@ -30,27 +30,34 @@ sub new {
         noreply => 0,
         %args,
     );
-    my $server = shift;
-    my $self = bless \%args, $class;
-    $self;
+    $class->_new(\%args);
+}
+
+sub DESTROY {
+    $_[0]->_destroy();
 }
 
 sub connect {
     my $self = shift;
-    return $self->{sock} if $self->{sock};
     my $socket = IO::Socket::INET->new(
-        PeerAddr => $self->{server},
-        Timeout => $self->{connect_timeout},
+        PeerAddr => $self->get_server,
+        Timeout => $self->get_connect_timeout,
     ) or return;
     $socket->setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
         or die "setsockopt(TCP_NODELAY) failed:$!";
     $socket->blocking(0) or die $!;
-    $self->{sock} = $socket;
-    $self->{fileno} = fileno($socket);
+    $self->set_socket($socket);
     $socket;
 }
 
-sub res_error {
+sub set_socket {
+    my ($self,$socket) = @_;
+    $self->get_bucket->{socket} = $socket;
+    $self->set_fileno(fileno($socket));
+}
+
+
+sub res_error3 {
     my $self = shift;
     delete $self->{sock};
     delete $self->{fileno};
@@ -62,7 +69,7 @@ sub res_error {
     return @res;
 }
 
-sub command {
+sub command3 {
     my $self = shift;
     return unless @_;
     if ( !$self->{fileno} ) {
@@ -72,7 +79,7 @@ sub command {
     run_command($self, @_);
 }
 
-sub pipeline {
+sub pipeline3 {
     my $self = shift;
     return unless @_;
     my $pipeline = @_;
