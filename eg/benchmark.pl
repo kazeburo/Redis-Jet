@@ -22,6 +22,7 @@ use Data::Dumper;
 say Dumper(\@val);
 say "fast:", $fast->get('foo');
 say "jet:", $jet->command(qw/get foo/);
+
 my $args = {
     utf8 => 0,
     io_timeout => 1,
@@ -38,7 +39,7 @@ my $args2 = {
 print "single get =======\n";
 
 cmpthese(
-    -1,
+    -3,
     {
         fast => sub {
             my $val = $fast->get('foo');
@@ -58,7 +59,7 @@ cmpthese(
 print "single incr =======\n";
 
 cmpthese(
-    -1,
+    -3,
     {
         fast => sub {
             my $val = $fast->incr('incrfoo');
@@ -82,7 +83,7 @@ print "pipeline =======\n";
 
 my $cb = sub {};
 cmpthese(
-    -1,
+    -3,
     {
         fast => sub {
             my @res;

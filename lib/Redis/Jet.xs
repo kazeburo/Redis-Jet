@@ -16,6 +16,15 @@ extern "C" {
 #define NEED_newSVpvn_flags
 #include "ppport.h"
 
+#define READ_MAX 16384
+#define REQUEST_BUF_SIZE 4096
+
+#define PIPELINE(a) a == 1
+
+struct jet_response_st {
+  SV * data;
+};
+
 struct redis_jet_s {
   SV * server;
   double connect_timeout;
@@ -24,12 +33,14 @@ struct redis_jet_s {
   int noreply;
   int fileno;
   HV * bucket;
+  char * request_buf;
+  char * read_buf;
+  ssize_t request_buf_len;
+  ssize_t read_buf_len;
+  struct jet_response_st * response_st;
+  ssize_t response_st_len;
 };
 typedef struct redis_jet_s Redis_Jet;
-
-struct jet_response_st {
-  SV * data;
-};
 
 
 static
@@ -370,6 +381,11 @@ _new(class, args)
       self->noreply = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "noreply", 0);
       self->bucket = newHV();
     }
+
+    self->request_buf_len = 0;
+    self->read_buf_len = 0;
+    self->response_st_len = 0;
+
     RETVAL = self;
   OUTPUT:
     RETVAL
@@ -435,6 +451,15 @@ SV *
 _destroy(self)
     Redis_Jet * self
   CODE:
+    if ( self->request_buf_len != 0 ) {
+      Safefree(self->request_buf);
+    }
+    if ( self->response_st_len != 0 ) {
+      Safefree(self->response_st);
+    }
+    if ( self->read_buf_len != 0 ) {
+      Safefree(self->read_buf);
+    }
     disconnect_socket(self);
     Safefree(self);
 
@@ -503,25 +528,33 @@ command(self,...)
     int args_offset = 1;
     int fig;
     ssize_t pipeline_len = 1;
-    ssize_t request_buf_len = 1024;
     ssize_t request_len = 0;
     STRLEN request_arg_len;
-    char * request;
     char * request_arg;
     AV * request_arg_list;
     /* send */
     ssize_t written;
     char * write_buf;
     /* response */
-    ssize_t read_max = 16*1024;
-    ssize_t read_buf_len;
     ssize_t readed;
     ssize_t parse_offset;
     ssize_t parsed_response;
     long int parse_result;
-    char * read_buf;
-    struct jet_response_st * response_st;
   PPCODE:
+
+    /* init */
+    if ( self->request_buf_len == 0 ) {
+      Newx(self->request_buf, REQUEST_BUF_SIZE, char);
+      self->request_buf_len = REQUEST_BUF_SIZE;
+    }
+    if ( self->read_buf_len == 0 ) {
+      Newx(self->read_buf, READ_MAX, char);
+      self->read_buf_len = READ_MAX;
+    }
+    if ( self->response_st_len == 0 ) {
+      Newx(self->response_st, sizeof(struct jet_response_st)*10, struct jet_response_st);
+      self->response_st_len = 10;
+    }
 
     /* connect */
     if ( self->fileno == 0 ) {
@@ -538,7 +571,7 @@ command(self,...)
       }
       if ( self->fileno == 0 ) {
         /* connection error */
-        if ( ix == 1 ) {
+        if ( PIPELINE(ix) ) {
           pipeline_len = items - args_offset;
           EXTEND(SP, pipeline_len);
           for (i=0; i<pipeline_len; i++) {
@@ -560,11 +593,12 @@ command(self,...)
       }
     }
 
-    char * s = SvPV_nolen(ST(1));
+    // char * s = SvPV_nolen(ST(1));
     // printf("ix:%d,fileno:%d,utf8:%d,timeout:%f,noreply:%d, items:%d %s\n",ix,self->fileno,self->utf8,self->io_timeout,self->noreply,items,&s[0]);
+
+
     /* build_message */
-    Newx(request, request_buf_len, char);
-    if ( ix == 1 ) {
+    if ( PIPELINE(ix) ) {
       /* build_request([qw/set foo bar/],[qw/set bar baz/]) */
       pipeline_len = items - args_offset;
       for( i=args_offset; i < items; i++ ) {
@@ -572,43 +606,43 @@ command(self,...)
           request_arg_list = (AV *)SvRV(ST(i));
           fig = (int)log10(av_len(request_arg_list)+1) + 1;
           /* 1(*) + args + 2(crlf)  */
-          renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2);
-          request[request_len++] = '*';
-          memcat_i(request, &request_len, av_len(request_arg_list)+1);
-          request[request_len++] = 13; // \r
-          request[request_len++] = 10; // \n
+          renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2);
+          self->request_buf[request_len++] = '*';
+          memcat_i(self->request_buf, &request_len, av_len(request_arg_list)+1);
+          self->request_buf[request_len++] = 13; // \r
+          self->request_buf[request_len++] = 10; // \n
           for (j=0; j<av_len(request_arg_list)+1; j++) {
             request_arg = svpv2char(aTHX_ *av_fetch(request_arg_list,j,0), &request_arg_len, self->utf8);
             fig = (int)log10(request_arg_len) + 1;
             /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
-            renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2 + request_arg_len + 2);
-            request[request_len++] = '$';
-            memcat_i(request, &request_len, request_arg_len);
-            request[request_len++] = 13; // \r
-            request[request_len++] = 10; // \n
-            memcat(request, &request_len, request_arg, request_arg_len);
-            request[request_len++] = 13; // \r
-            request[request_len++] = 10; // \n
+            renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2 + request_arg_len + 2);
+            self->request_buf[request_len++] = '$';
+            memcat_i(self->request_buf, &request_len, request_arg_len);
+            self->request_buf[request_len++] = 13; // \r
+            self->request_buf[request_len++] = 10; // \n
+            memcat(self->request_buf, &request_len, request_arg, request_arg_len);
+            self->request_buf[request_len++] = 13; // \r
+            self->request_buf[request_len++] = 10; // \n
           }
        }
        else {
           /* 1(*) + 1(args) + 2(crlf)  */
-          renewmem(aTHX_ &request, &request_buf_len, 1 + 1 + 2);
-          request[request_len++] = '*';
-          request[request_len++] = '1';
-          request[request_len++] = 13; // \r
-          request[request_len++] = 10; // \n
+          renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + 1 + 2);
+          self->request_buf[request_len++] = '*';
+          self->request_buf[request_len++] = '1';
+          self->request_buf[request_len++] = 13; // \r
+          self->request_buf[request_len++] = 10; // \n
           request_arg = svpv2char(aTHX_ ST(i), &request_arg_len, self->utf8);
           fig = (int)log10(request_arg_len) + 1;
           /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
-          renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2 + request_arg_len + 2);
-          request[request_len++] = '$';
-          memcat_i(request, &request_len, request_arg_len);
-          request[request_len++] = 13; // \r
-          request[request_len++] = 10; // \n
-          memcat(request, &request_len, request_arg, request_arg_len);
-          request[request_len++] = 13; // \r
-          request[request_len++] = 10; // \n
+          renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2 + request_arg_len + 2);
+          self->request_buf[request_len++] = '$';
+          memcat_i(self->request_buf, &request_len, request_arg_len);
+          self->request_buf[request_len++] = 13; // \r
+          self->request_buf[request_len++] = 10; // \n
+          memcat(self->request_buf, &request_len, request_arg, request_arg_len);
+          self->request_buf[request_len++] = 13; // \r
+          self->request_buf[request_len++] = 10; // \n
         }
       }
     }
@@ -616,23 +650,23 @@ command(self,...)
       /* build_request(qw/set bar baz/) */
       fig = (int)log10(items-args_offset) + 1;
       /* 1(*) + fig + 2(crlf)  */
-      renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2);
-      request[request_len++] = '*';
-      memcat_i(request, &request_len, items-args_offset);
-      request[request_len++] = 13; // \r
-      request[request_len++] = 10; // \n
+      renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2);
+      self->request_buf[request_len++] = '*';
+      memcat_i(self->request_buf, &request_len, items-args_offset);
+      self->request_buf[request_len++] = 13; // \r
+      self->request_buf[request_len++] = 10; // \n
       for (j=args_offset; j<items; j++) {
         request_arg = svpv2char(aTHX_ ST(j), &request_arg_len, self->utf8);
         fig = (int)log10(request_arg_len) + 1;
         /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
-        renewmem(aTHX_ &request, &request_buf_len, 1 + fig + 2 + request_arg_len + 2);
-        request[request_len++] = '$';
-        memcat_i(request, &request_len, request_arg_len);
-        request[request_len++] = 13; // \r
-        request[request_len++] = 10; // \n
-        memcat(request, &request_len, request_arg, request_arg_len);
-        request[request_len++] = 13; // \r
-        request[request_len++] = 10; // \n
+        renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2 + request_arg_len + 2);
+        self->request_buf[request_len++] = '$';
+        memcat_i(self->request_buf, &request_len, request_arg_len);
+        self->request_buf[request_len++] = 13; // \r
+        self->request_buf[request_len++] = 10; // \n
+        memcat(self->request_buf, &request_len, request_arg, request_arg_len);
+        self->request_buf[request_len++] = 13; // \r
+        self->request_buf[request_len++] = 10; // \n
       }
     }
 
@@ -640,27 +674,32 @@ command(self,...)
     // printf("pipeline_len:%d,%d,%ld\n",args_offset,items,pipeline_len);
     /* send request */
     written = 0;
-    write_buf = &request[0];
+    write_buf = &self->request_buf[0];
     while ( request_len > written ) {
       ret = _write_timeout(self->fileno, self->io_timeout, write_buf, request_len - written);
       if ( ret < 0 ) {
         break;
       }
       written += ret;
-      write_buf = &request[written];
+      write_buf = &self->request_buf[written];
     }
+
     /* request done */
-    Safefree(request);
-    if ( ix == 1 ) {
+    if ( PIPELINE(ix) ) {
       EXTEND(SP, pipeline_len);
+      if ( pipeline_len > self->response_st_len ) {
+        Renew(self->response_st, sizeof(struct jet_response_st)*pipeline_len, struct jet_response_st);
+        self->response_st_len = pipeline_len;
+      }
     }
     else {
       EXTEND(SP, 2);
     }
+
     /* request error */
     if (ret <= 0) {
       disconnect_socket(self);
-      if ( ix == 1 ) {
+      if ( PIPELINE(ix) ) {
         for (i=0; i<pipeline_len; i++) {
           data_av = newAV();
           (void)av_push(data_av, &PL_sv_undef);
@@ -676,9 +715,11 @@ command(self,...)
       }
       goto COMMAND_DONE;
     }
+
+    /* noreply */
     if ( self->noreply > 0 ) {
-      ret = read(self->fileno, NULL, read_max);
-      if ( ix == 1 ) {
+      ret = read(self->fileno, NULL, READ_MAX);
+      if ( PIPELINE(ix) ) {
         for (i=0; i<pipeline_len; i++) {
           data_av = newAV();
           (void)av_push(data_av, newSVpv("0 but true",0));
@@ -692,33 +733,25 @@ command(self,...)
     }
 
     /* read response */
-    read_buf_len = read_max;
-    Newx(read_buf, read_buf_len, char);
-    if ( ix == 1 ) {
-      Newx(response_st, sizeof(struct jet_response_st)*pipeline_len, struct jet_response_st);
-    }
-    else {
-      Newx(response_st, sizeof(struct jet_response_st)*2, struct jet_response_st);
-    }
     parsed_response=0;
     parse_offset=0;
     readed = 0;
     while (1) {
-      ret = _read_timeout(self->fileno, self->io_timeout, &read_buf[readed], read_max);
+      ret = _read_timeout(self->fileno, self->io_timeout, &self->read_buf[readed], READ_MAX);
       if ( ret <= 0 ) {
         /* timeout or error */
         disconnect_socket(self);
-        if ( ix == 1 ) {
+        if ( PIPELINE(ix) ) {
           for (i=0; i<pipeline_len; i++) {
             data_av = newAV();
             (void)av_push(data_av, &PL_sv_undef);
             (void)av_push(data_av, newSVpvf("failed to read message: %s", ( errno != 0 ) ? strerror(errno) : "timeout or disconnected"));
-            response_st[i].data = newRV_noinc((SV*)data_av);
+            self->response_st[i].data = newRV_noinc((SV*)data_av);
           }
         }
         else {
-          response_st[0].data = &PL_sv_undef;
-          response_st[1].data = newSVpvf("failed to read message: %s", ( errno != 0 ) ? strerror(errno) : "timeout or disconnected");
+          self->response_st[0].data = &PL_sv_undef;
+          self->response_st[1].data = newSVpvf("failed to read message: %s", ( errno != 0 ) ? strerror(errno) : "timeout or disconnected");
         }
         goto PARSER_DONE;
       }
@@ -728,21 +761,21 @@ command(self,...)
         (void)SvUPGRADE(data_sv, SVt_PV);
         error_sv = newSV(0);
         (void)SvUPGRADE(error_sv, SVt_PV);
-        parse_result = _parse_message(aTHX_ &read_buf[parse_offset], readed - parse_offset, data_sv, error_sv, self->utf8);
+        parse_result = _parse_message(aTHX_ &self->read_buf[parse_offset], readed - parse_offset, data_sv, error_sv, self->utf8);
         if ( parse_result == -1 ) {
           /* corruption */
           disconnect_socket(self);
-          if ( ix == 1 ) {
+          if ( PIPELINE(ix) ) {
             for (i=0; i<pipeline_len; i++) {
               data_av = newAV();
               (void)av_push(data_av, &PL_sv_undef);
               (void)av_push(data_av, newSVpv("failed to read message: corrupted message found",0));
-              response_st[i].data = newRV_noinc((SV*)data_av);
+              self->response_st[i].data = newRV_noinc((SV*)data_av);
             }
           }
           else {
-            response_st[0].data = &PL_sv_undef;
-            response_st[1].data = newSVpv("failed to read message: corrupted message found",0);
+            self->response_st[0].data = &PL_sv_undef;
+            self->response_st[1].data = newSVpv("failed to read message: corrupted message found",0);
           }
           goto PARSER_DONE;
         }
@@ -751,7 +784,7 @@ command(self,...)
         }
         else {
           parse_offset += parse_result;
-          if ( ix == 1 ) {
+          if ( PIPELINE(ix) ) {
             data_av = newAV();
             av_push(data_av, data_sv);
             if ( SvOK(error_sv) ) {
@@ -760,36 +793,49 @@ command(self,...)
             else {
               sv_2mortal(error_sv);
             }
-            response_st[parsed_response++].data = newRV_noinc((SV*)data_av);
+            self->response_st[parsed_response++].data = newRV_noinc((SV*)data_av);
             if ( parsed_response >= pipeline_len ) {
               goto PARSER_DONE;
             }
           }
           else {
-            response_st[0].data = data_sv;
-            response_st[1].data = error_sv;
+            self->response_st[0].data = data_sv;
+            self->response_st[1].data = error_sv;
             goto PARSER_DONE;
           }
         }
       }
-      renewmem(aTHX_ &read_buf, &read_buf_len, readed + read_max);
+      renewmem(aTHX_ &self->read_buf, &self->read_buf_len, readed + READ_MAX);
     }
+    
     PARSER_DONE:
-    if ( ix == 1 ) {
+    if ( PIPELINE(ix) ) {
       for (i=0; i<pipeline_len; i++) {
-        PUSHs( sv_2mortal((SV *)response_st[i].data));
+        PUSHs( sv_2mortal((SV *)self->response_st[i].data));
       }
     }
     else {
-      PUSHs( sv_2mortal(response_st[0].data) );
-      if ( SvOK(response_st[1].data) ) {
-        PUSHs( sv_2mortal(response_st[1].data) );
+      PUSHs( sv_2mortal(self->response_st[0].data) );
+      if ( SvOK(self->response_st[1].data) ) {
+        PUSHs( sv_2mortal(self->response_st[1].data) );
       }
       else {
-        sv_2mortal(response_st[1].data);
+        sv_2mortal(self->response_st[1].data);
       }
     }
-    Safefree(response_st);
-    Safefree(read_buf);
+    
     COMMAND_DONE:
+    if ( self->request_buf_len > REQUEST_BUF_SIZE * 4 ) {
+      Safefree(self->request_buf);
+      self->request_buf_len = 0;
+    }
+    if ( self->response_st_len > 10 ) {
+      Safefree(self->response_st);
+      self->response_st_len = 0;
+    }
+    if ( self->read_buf_len > READ_MAX * 4 ) {
+      Safefree(self->read_buf);
+      self->read_buf_len = 0;
+    }
+
 

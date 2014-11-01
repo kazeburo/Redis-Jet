@@ -10,7 +10,7 @@ my $tmp_dir = File::Temp->newdir( CLEANUP => 1 );
 test_tcp(
     client => sub {
         my ($port, $server_pid) = @_;
-        my $jet = Redis::Jet->new( server => 'localhost:'.$port );
+        my $jet = Redis::Jet->new( server => 'localhost:'.$port, io_timeout => 5 );
         is($jet->command(qw/set foo foovalue/),'OK');
         is($jet->command(qw/set bar barvalue/),'OK');
         is($jet->command(qw/get foo/),'foovalue');
@@ -29,10 +29,17 @@ test_tcp(
         is($jet->command(qw/get hoge/),'');
 
         # large data
-        my $large_data = 'あいう' x 30*1024;
+        my $large_data = 'あいう' x 60*1024;
         is($jet->command(qw/set large-foo/,$large_data),'OK');
-        is($jet->command(qw/get large-foo/),$large_data);        
+        is($jet->command(qw/get large-foo/),$large_data);
 
+        # large pipeline
+        my @lreq;
+        push @lreq, ['ping'] for 1..100;
+        my @lres = $jet->pipeline(@lreq);
+        is( scalar @lres, 100);
+        my @pong_lres = grep { $_->[0] eq 'PONG' } @lres;
+        is( scalar @pong_lres, 100);
     },
     server => sub {
         my ($port) = @_;
