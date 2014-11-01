@@ -35,10 +35,10 @@ struct redis_jet_s {
   HV * bucket;
   char * request_buf;
   char * read_buf;
-  ssize_t request_buf_len;
-  ssize_t read_buf_len;
+  long int request_buf_len;
+  long int read_buf_len;
   struct jet_response_st * response_st;
-  ssize_t response_st_len;
+  long int response_st_len;
 };
 typedef struct redis_jet_s Redis_Jet;
 
@@ -46,7 +46,8 @@ typedef struct redis_jet_s Redis_Jet;
 static
 int
 hv_fetch_iv(pTHX_ HV * hv, const char * key, const int defaultval ) {
-  SV **ssv = hv_fetch(hv, key, strlen(key), 0);
+  SV **ssv;
+  ssv = hv_fetch(hv, key, strlen(key), 0);
   if (ssv) {
     return SvIV(*ssv);
   }
@@ -56,7 +57,8 @@ hv_fetch_iv(pTHX_ HV * hv, const char * key, const int defaultval ) {
 static
 double
 hv_fetch_nv(pTHX_ HV * hv, const char * key, const double defaultval ) {
-  SV **ssv = hv_fetch(hv, key, strlen(key), 0);
+  SV **ssv;
+  ssv = hv_fetch(hv, key, strlen(key), 0);
   if (ssv) {
     return SvNV(*ssv);
   }
@@ -381,11 +383,9 @@ _new(class, args)
       self->noreply = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "noreply", 0);
       self->bucket = newHV();
     }
-
     self->request_buf_len = 0;
     self->read_buf_len = 0;
     self->response_st_len = 0;
-
     RETVAL = self;
   OUTPUT:
     RETVAL
@@ -461,6 +461,8 @@ _destroy(self)
       Safefree(self->read_buf);
     }
     disconnect_socket(self);
+    SvREFCNT_dec((SV*)self->server);
+    SvREFCNT_dec((SV*)self->bucket);
     Safefree(self);
 
 SV *
