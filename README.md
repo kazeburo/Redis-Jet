@@ -59,6 +59,14 @@ simple interfaces to communicate with Redis server
 
         IF enabled. The instance does not parse any responses. Every responses to be `"0 but true"`. default: 0 (false)
 
+    - reconnect\_attempts
+
+        If Redis::Jet could not connect to redis server or failed to write requests, Redis::Jet attempts to re-connect. This parameter specify how many times to try reconnect. default: 0 (disable reconnect feature);
+
+    - reconnect\_delay
+
+        Redis::Jet inserts delay before reconnect redis-server (see `reconnect_attempts`). default: 0.1 (100msec)
+
 - `($value,[$error]) = $obj->command($command,$args,$args)`
 
     send a command and retrieve a value
