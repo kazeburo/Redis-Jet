@@ -31,6 +31,8 @@ struct redis_jet_s {
   double io_timeout;
   int utf8;
   int noreply;
+  int reconnect_attempts;
+  double reconnect_delay;
   int fileno;
   HV * bucket;
   char * request_buf;
@@ -381,7 +383,12 @@ _new(class, args)
       self->connect_timeout = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "connect_timeout", 10);
       self->io_timeout = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "io_timeout", 10);
       self->noreply = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "noreply", 0);
+      self->reconnect_attempts = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "reconnect_attempts", 0);
+      self->reconnect_delay = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "reconnect_delay", 10);
       self->bucket = newHV();
+    }
+    else {
+      croak("Not a hash reference");
     }
     self->request_buf_len = 0;
     self->read_buf_len = 0;
@@ -529,6 +536,7 @@ command(self,...)
     /* build */
     int args_offset = 1;
     int fig;
+    int connect_retry = 0;
     ssize_t pipeline_len = 1;
     ssize_t request_len = 0;
     STRLEN request_arg_len;
@@ -557,7 +565,7 @@ command(self,...)
       Newx(self->response_st, sizeof(struct jet_response_st)*10, struct jet_response_st);
       self->response_st_len = 10;
     }
-
+    DO_CONNECT:
     /* connect */
     if ( self->fileno == 0 ) {
       {
@@ -573,6 +581,12 @@ command(self,...)
       }
       if ( self->fileno == 0 ) {
         /* connection error */
+        disconnect_socket(self);
+        if ( self->reconnect_attempts > 0 && self->reconnect_attempts > connect_retry ) {
+          connect_retry++;
+          usleep(self->reconnect_delay*1000000); // micro-sec
+          goto DO_CONNECT;
+        }
         if ( PIPELINE(ix) ) {
           pipeline_len = items - args_offset;
           EXTEND(SP, pipeline_len);
@@ -590,10 +604,12 @@ command(self,...)
           PUSHs(sv_2mortal(newSVpvf("failed to connect server: %s",
               ( errno != 0 ) ? strerror(errno) : "timeout")));
         }
-        disconnect_socket(self);
         goto COMMAND_DONE;
       }
     }
+
+    /* connection successful */
+    connect_retry = 0;
 
     // char * s = SvPV_nolen(ST(1));
     // printf("ix:%d,fileno:%d,utf8:%d,timeout:%f,noreply:%d, items:%d %s\n",ix,self->fileno,self->utf8,self->io_timeout,self->noreply,items,&s[0]);
@@ -701,6 +717,11 @@ command(self,...)
     /* request error */
     if (ret <= 0) {
       disconnect_socket(self);
+      if ( ret == 0 && self->reconnect_attempts > 0 && self->reconnect_attempts > connect_retry ) {
+        connect_retry++;
+        usleep(self->reconnect_delay*1000000);  // micro-sec
+        goto DO_CONNECT;
+      }
       if ( PIPELINE(ix) ) {
         for (i=0; i<pipeline_len; i++) {
           data_av = newAV();
@@ -744,7 +765,7 @@ command(self,...)
         /* timeout or error */
         disconnect_socket(self);
         if ( PIPELINE(ix) ) {
-          for (i=0; i<pipeline_len; i++) {
+          for (i=parsed_response; i<pipeline_len; i++) {
             data_av = newAV();
             (void)av_push(data_av, &PL_sv_undef);
             (void)av_push(data_av, newSVpvf("failed to read message: %s", ( errno != 0 ) ? strerror(errno) : "timeout or disconnected"));
@@ -768,7 +789,7 @@ command(self,...)
           /* corruption */
           disconnect_socket(self);
           if ( PIPELINE(ix) ) {
-            for (i=0; i<pipeline_len; i++) {
+            for (i=parsed_response; i<pipeline_len; i++) {
               data_av = newAV();
               (void)av_push(data_av, &PL_sv_undef);
               (void)av_push(data_av, newSVpv("failed to read message: corrupted message found",0));

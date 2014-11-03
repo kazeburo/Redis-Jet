@@ -23,19 +23,6 @@ say Dumper(\@val);
 say "fast:", $fast->get('foo');
 say "jet:", $jet->command(qw/get foo/);
 
-my $args = {
-    utf8 => 0,
-    io_timeout => 1,
-    noreply => 0,
-    fileno => fileno($jet->connect)
-};
-my $args2 = {
-    utf8 => 0,
-    io_timeout => 1,
-    noreply => 1,
-    fileno => fileno($jet->connect)
-};
-
 print "single get =======\n";
 
 cmpthese(

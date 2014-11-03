@@ -28,6 +28,8 @@ sub new {
         io_timeout => 1,
         utf8 => 0,
         noreply => 0,
+        reconnect_attempts => 0,
+        reconnect_delay => 0.1,
         %args,
     );
     $class->_new(\%args);
@@ -127,6 +129,14 @@ If enabled, Redis::Jet does encode/decode strings. default: 0 (false)
 
 IF enabled. The instance does not parse any responses. Every responses to be C<"0 but true">. default: 0 (false)
 
+=item reconnect_attempts
+
+If Redis::Jet could not connect to redis server or failed to write requests, Redis::Jet attempts to re-connect. This parameter specify how many times to try reconnect. default: 0 (disable reconnect feature);
+
+=item reconnect_delay
+
+Redis::Jet inserts delay before reconnect redis-server (see C<reconnect_attempts>). default: 0.1 (100msec)
+
 =back
 
 =item C<< ($value,[$error]) = $obj->command($command,$args,$args) >>
@@ -143,24 +153,24 @@ send several commands and retrieve values. each value has value and error string
 
     single get =======
                 Rate   redis    fast hiredis     jet
-    redis    45378/s      --    -59%    -71%    -74%
-    fast    111655/s    146%      --    -28%    -37%
-    hiredis 154429/s    240%     38%      --    -13%
-    jet     177292/s    291%     59%     15%      --
+    redis    46036/s      --    -58%    -70%    -75%
+    fast    110682/s    140%      --    -29%    -39%
+    hiredis 155172/s    237%     40%      --    -15%
+    jet     181695/s    295%     64%     17%      --
     single incr =======
                 Rate   redis    fast hiredis     jet
-    redis    48830/s      --    -58%    -70%    -72%
-    fast    116381/s    138%      --    -29%    -33%
-    hiredis 163837/s    236%     41%      --     -6%
-    jet     174880/s    258%     50%      7%      --
+    redis    49118/s      --    -58%    -70%    -73%
+    fast    116294/s    137%      --    -29%    -37%
+    hiredis 164938/s    236%     42%      --    -11%
+    jet     184497/s    276%     59%     12%      --
     pipeline =======
               Rate redis  fast   jet
-    redis  15514/s    --  -73%  -87%
-    fast   57985/s  274%    --  -50%
-    jet   116536/s  651%  101%    --
+    redis  15754/s    --  -73%  -87%
+    fast   58519/s  271%    --  -53%
+    jet   124185/s  688%  112%    --
     
     Physical server
-    Intel(R) Xeon(R) CPU E3-1240 v3 @ 3.40GHz | 4core/8thread    
+    Intel Xeon CPU E3-1240 v3 @ 3.40GHz | 4core/8thread    
     redis-2.8.17
     Perl-5.20.1
     Redis 1.976
@@ -168,7 +178,6 @@ send several commands and retrieve values. each value has value and error string
     Redis::hiredis 0.11.0
 
 =head1 SEE ALSO
-
 
 * L<Redis>
 
