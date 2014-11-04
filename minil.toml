@@ -2,5 +2,8 @@ name = "Redis-Jet"
 # badges = ["travis"]
 authority="cpan:KAZEBURO"
 
-module_maker="ModuleBuildTiny"
+module_maker="ModuleBuild"
+
+[build]
+build_class = "builder::MyBuilder"
 
