@@ -30,3 +30,4 @@ MYMETA.*
 lib/Redis/Jet.c
 !lib/Redis/ppport.h
 temp/
+_Inline/

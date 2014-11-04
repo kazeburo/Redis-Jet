@@ -32,6 +32,7 @@ test_tcp(
         my $large_data = 'あいう'x81140;
         is($jet->command(qw/set large-foo/,$large_data),'OK');
         is($jet->command(qw/get large-foo/),$large_data);
+        is_deeply([$jet->pipeline([qw/get large-foo/])],[[$large_data]]);
 
         # large pipeline
         my @lreq;
