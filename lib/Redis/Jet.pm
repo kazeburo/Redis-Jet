@@ -93,7 +93,7 @@ Redis::Jet - Yet another XS implemented Redis Client
 
 =head1 DESCRIPTION
 
-This is project is still in a very early development stage.
+This project is still in a very early development stage.
 IT IS NOT READY FOR PRODUCTION!
 
 Redis::Jet is yet another XS implemented Redis Client. This module provides
