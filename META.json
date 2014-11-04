@@ -30,6 +30,7 @@
          "requires" : {
             "CPAN::Meta" : "0",
             "CPAN::Meta::Prereqs" : "0",
+            "Devel::CheckCompiler" : "0.04",
             "Module::Build" : "0.38"
          }
       },
