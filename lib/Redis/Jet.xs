@@ -20,6 +20,7 @@ extern "C" {
 #define REQUEST_BUF_SIZE 4096
 
 #define PIPELINE(a) a == 1
+#define FIGURES(a) (a==0) ? 1 : (int)log10(a) + 1
 
 struct jet_response_st {
   SV * data;
@@ -101,19 +102,20 @@ static
 void
 renewmem(pTHX_ char **d, ssize_t *cur, const ssize_t req) {
     if ( req > *cur ) {
-        *cur = ((req % 256) + 1) * 256;
+        *cur = req - (req % 4096) + 4096;
         Renew(*d, *cur, char);
     }
 }
 
 static
 void
-memcat_i(char * dst, ssize_t *dst_len, ssize_t snum ) {
-    int dlen = *dst_len;
+memcat_i(char * dst, ssize_t *dst_len, ssize_t snum, const int fig ) {
+    int dlen = *dst_len + fig - 1;
     do {
-        dst[dlen++] = '0' + (snum % 10);
+        dst[dlen] = '0' + (snum % 10);
+        dlen--;
     } while ( snum /= 10);
-    *dst_len = dlen;
+    *dst_len += fig;
 }
 
 static
@@ -552,6 +554,7 @@ command(self,...)
     long int parse_result;
   PPCODE:
 
+
     /* init */
     if ( self->request_buf_len == 0 ) {
       Newx(self->request_buf, REQUEST_BUF_SIZE, char);
@@ -622,20 +625,20 @@ command(self,...)
       for( i=args_offset; i < items; i++ ) {
         if ( SvOK(ST(i)) && SvROK(ST(i)) && SvTYPE(SvRV(ST(i))) == SVt_PVAV ) {
           request_arg_list = (AV *)SvRV(ST(i));
-          fig = (int)log10(av_len(request_arg_list)+1) + 1;
+          fig = FIGURES(av_len(request_arg_list)+1);
           /* 1(*) + args + 2(crlf)  */
           renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2);
           self->request_buf[request_len++] = '*';
-          memcat_i(self->request_buf, &request_len, av_len(request_arg_list)+1);
+          memcat_i(self->request_buf, &request_len, av_len(request_arg_list)+1, fig);
           self->request_buf[request_len++] = 13; // \r
           self->request_buf[request_len++] = 10; // \n
           for (j=0; j<av_len(request_arg_list)+1; j++) {
             request_arg = svpv2char(aTHX_ *av_fetch(request_arg_list,j,0), &request_arg_len, self->utf8);
-            fig = (int)log10(request_arg_len) + 1;
+            fig = FIGURES(request_arg_len);
             /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
             renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2 + request_arg_len + 2);
             self->request_buf[request_len++] = '$';
-            memcat_i(self->request_buf, &request_len, request_arg_len);
+            memcat_i(self->request_buf, &request_len, request_arg_len, fig);
             self->request_buf[request_len++] = 13; // \r
             self->request_buf[request_len++] = 10; // \n
             memcat(self->request_buf, &request_len, request_arg, request_arg_len);
@@ -651,11 +654,11 @@ command(self,...)
           self->request_buf[request_len++] = 13; // \r
           self->request_buf[request_len++] = 10; // \n
           request_arg = svpv2char(aTHX_ ST(i), &request_arg_len, self->utf8);
-          fig = (int)log10(request_arg_len) + 1;
+          fig = FIGURES(request_arg_len);
           /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
           renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2 + request_arg_len + 2);
           self->request_buf[request_len++] = '$';
-          memcat_i(self->request_buf, &request_len, request_arg_len);
+          memcat_i(self->request_buf, &request_len, request_arg_len, fig);
           self->request_buf[request_len++] = 13; // \r
           self->request_buf[request_len++] = 10; // \n
           memcat(self->request_buf, &request_len, request_arg, request_arg_len);
@@ -666,20 +669,20 @@ command(self,...)
     }
     else {
       /* build_request(qw/set bar baz/) */
-      fig = (int)log10(items-args_offset) + 1;
+      fig = FIGURES(items-args_offset);
       /* 1(*) + fig + 2(crlf)  */
       renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2);
       self->request_buf[request_len++] = '*';
-      memcat_i(self->request_buf, &request_len, items-args_offset);
+      memcat_i(self->request_buf, &request_len, items-args_offset, fig);
       self->request_buf[request_len++] = 13; // \r
       self->request_buf[request_len++] = 10; // \n
       for (j=args_offset; j<items; j++) {
         request_arg = svpv2char(aTHX_ ST(j), &request_arg_len, self->utf8);
-        fig = (int)log10(request_arg_len) + 1;
+        fig = FIGURES(request_arg_len);
         /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
         renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2 + request_arg_len + 2);
         self->request_buf[request_len++] = '$';
-        memcat_i(self->request_buf, &request_len, request_arg_len);
+        memcat_i(self->request_buf, &request_len, request_arg_len, fig);
         self->request_buf[request_len++] = 13; // \r
         self->request_buf[request_len++] = 10; // \n
         memcat(self->request_buf, &request_len, request_arg, request_arg_len);
@@ -688,7 +691,7 @@ command(self,...)
       }
     }
 
-    // printf("==%s--\n",&request[0]);
+    // printf("== %s --\n",&self->request_buf[0]);
     // printf("pipeline_len:%d,%d,%ld\n",args_offset,items,pipeline_len);
     /* send request */
     written = 0;
@@ -860,5 +863,4 @@ command(self,...)
       Safefree(self->read_buf);
       self->read_buf_len = 0;
     }
-
 

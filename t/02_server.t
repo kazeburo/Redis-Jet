@@ -29,7 +29,7 @@ test_tcp(
         is($jet->command(qw/get hoge/),'');
 
         # large data
-        my $large_data = 'あいう' x 60*1024;
+        my $large_data = 'あいう'x81140;
         is($jet->command(qw/set large-foo/,$large_data),'OK');
         is($jet->command(qw/get large-foo/),$large_data);
 
