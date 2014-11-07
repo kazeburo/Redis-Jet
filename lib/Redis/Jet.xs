@@ -16,6 +16,14 @@ extern "C" {
 #define NEED_newSVpvn_flags
 #include "ppport.h"
 
+#ifndef STATIC_INLINE /* a public perl API from 5.13.4 */
+#   if defined(__GNUC__) || defined(__cplusplus) || (defined(__STDC_VERSION__) && (__STDC_VERSION__ >= 199901L))
+#       define STATIC_INLINE static inline
+#   else
+#       define STATIC_INLINE static
+#   endif
+#endif /* STATIC_INLINE */
+
 #define READ_MAX 16384
 #define REQUEST_BUF_SIZE 4096
 
@@ -46,7 +54,7 @@ struct redis_jet_s {
 typedef struct redis_jet_s Redis_Jet;
 
 
-static
+STATIC_INLINE
 int
 hv_fetch_iv(pTHX_ HV * hv, const char * key, const int defaultval ) {
   SV **ssv;
@@ -57,7 +65,7 @@ hv_fetch_iv(pTHX_ HV * hv, const char * key, const int defaultval ) {
   return defaultval;
 }
 
-static
+STATIC_INLINE
 double
 hv_fetch_nv(pTHX_ HV * hv, const char * key, const double defaultval ) {
   SV **ssv;
@@ -68,7 +76,7 @@ hv_fetch_nv(pTHX_ HV * hv, const char * key, const double defaultval ) {
   return defaultval;
 }
 
-static
+STATIC_INLINE
 void
 memcat( char * dst, ssize_t *dst_len, const char * src, const ssize_t src_len ) {
     ssize_t i;
@@ -79,7 +87,7 @@ memcat( char * dst, ssize_t *dst_len, const char * src, const ssize_t src_len ) 
     *dst_len = dlen;
 }
 
-static
+STATIC_INLINE
 char *
 svpv2char(pTHX_ SV *string, STRLEN *len, const int utf8) {
     char *str;
@@ -98,7 +106,7 @@ svpv2char(pTHX_ SV *string, STRLEN *len, const int utf8) {
 
 
 
-static
+STATIC_INLINE
 void
 renewmem(pTHX_ char **d, ssize_t *cur, const ssize_t req) {
     if ( req > *cur ) {
@@ -107,7 +115,7 @@ renewmem(pTHX_ char **d, ssize_t *cur, const ssize_t req) {
     }
 }
 
-static
+STATIC_INLINE
 void
 memcat_i(char * dst, ssize_t *dst_len, ssize_t snum, const int fig ) {
     int dlen = *dst_len + fig - 1;
@@ -118,7 +126,7 @@ memcat_i(char * dst, ssize_t *dst_len, ssize_t snum, const int fig ) {
     *dst_len += fig;
 }
 
-static
+STATIC_INLINE
 long int
 _index_crlf(const char * buf, const ssize_t buf_len, ssize_t offset) {
   ssize_t ret = -1;
@@ -132,7 +140,7 @@ _index_crlf(const char * buf, const ssize_t buf_len, ssize_t offset) {
   return ret;
 }
 
-static
+STATIC_INLINE
 void
 _av_push(pTHX_ AV * data_av, const char * buf, const ssize_t copy_len, const int utf8) {
     SV * dst;
@@ -142,7 +150,7 @@ _av_push(pTHX_ AV * data_av, const char * buf, const ssize_t copy_len, const int
     (void)av_push(data_av, dst);
 }
 
-static
+STATIC_INLINE
 void
 _sv_store(pTHX_ SV * data_sv, char * buf, ssize_t copy_len, int utf8) {
     char * d;
@@ -163,7 +171,7 @@ _sv_store(pTHX_ SV * data_sv, char * buf, ssize_t copy_len, int utf8) {
   == -2 incomplete
   == -1 broken
 */
-static
+STATIC_INLINE
 long int
 _parse_message(pTHX_ char * buf, const ssize_t buf_len, SV * data_sv, SV * error_sv, const int utf8) {
   long int first_crlf;
@@ -185,113 +193,111 @@ _parse_message(pTHX_ char * buf, const ssize_t buf_len, SV * data_sv, SV * error
     return -2;
   }
 
-  if ( buf[0] == '+' || buf[0] == ':') {
-    /* 1 line reply
-    +foo\r\n */
-    _sv_store(aTHX_ data_sv, &buf[1], first_crlf-1, utf8);
-    return first_crlf + 2;
-  }
-  else if ( buf[0] == '-' ) {
-    /* error
-    -ERR unknown command 'a' */
-    sv_setsv(data_sv, &PL_sv_undef);
-    _sv_store(aTHX_ error_sv, &buf[1], first_crlf-1, utf8);
-    return first_crlf + 2;
-  }
-  else if ( buf[0] == '$' ) {
-    /* bulf
-       C: get mykey
-       S: $3
-       S: foo
-    */
-    if ( buf[1] == '-' && buf[2] == '1' ) {
-      sv_setsv(data_sv, &PL_sv_undef);
-      sv_setsv(error_sv, &PL_sv_undef);
+  switch ( buf[0] ) {
+    case '+':
+    case ':':
+      /* 1 line reply
+      +foo\r\n */
+      _sv_store(aTHX_ data_sv, &buf[1], first_crlf-1, utf8);
       return first_crlf + 2;
-    }
-    v_size = 0;
-    for (j=1; j<first_crlf; j++ ) {
-      v_size = v_size * 10 + (buf[j] - '0');
-    }
-    if ( buf_len - (first_crlf + 2) < v_size + 2 ) {
-      return -2;
-    }
-    _sv_store(aTHX_ data_sv, &buf[first_crlf+2], v_size, utf8);
-    sv_setsv(error_sv, &PL_sv_undef);
-    return first_crlf+2+v_size+2;
-  }
-  else if ( buf[0] == '*' ) {
-    /* multibulk
-       # *3
-       # $3
-       # foo
-       # $-1
-       # $3
-       # baa
-       #
-       ## null list/timeout
-       # *-1
-       #
-    */
-    if ( buf[1] == '-' && buf[2] == '1' ) {
+    case '-':
+      /* error
+      -ERR unknown command 'a' */
       sv_setsv(data_sv, &PL_sv_undef);
-      sv_setsv(error_sv, &PL_sv_undef);
+      _sv_store(aTHX_ error_sv, &buf[1], first_crlf-1, utf8);
       return first_crlf + 2;
-    }
-    m_size = 0;
-    for (j=1; j<first_crlf; j++ ) {
-      m_size = m_size * 10 + (buf[j] - '0');
-    }
-    av_list = newAV();
-    if ( m_size == 0 ) {
+     case '$':
+      /* bulf
+        C: get mykey
+        S: $3
+        S: foo
+      */
+      if ( buf[1] == '-' && buf[2] == '1' ) {
+        sv_setsv(data_sv, &PL_sv_undef);
+        sv_setsv(error_sv, &PL_sv_undef);
+        return first_crlf + 2;
+      }
+      v_size = 0;
+      for (j=1; j<first_crlf; j++ ) {
+        v_size = v_size * 10 + (buf[j] - '0');
+      }
+      if ( buf_len - (first_crlf + 2) < v_size + 2 ) {
+        return -2;
+      }
+      _sv_store(aTHX_ data_sv, &buf[first_crlf+2], v_size, utf8);
+      sv_setsv(error_sv, &PL_sv_undef);
+      return first_crlf+2+v_size+2;
+    case '*':
+      /* multibulk
+         # *3
+         # $3
+         # foo
+         # $-1
+         # $3
+         # baa
+         #
+         ## null list/timeout
+         # *-1
+         #
+      */
+      if ( buf[1] == '-' && buf[2] == '1' ) {
+        sv_setsv(data_sv, &PL_sv_undef);
+        sv_setsv(error_sv, &PL_sv_undef);
+        return first_crlf + 2;
+      }
+      m_size = 0;
+      for (j=1; j<first_crlf; j++ ) {
+        m_size = m_size * 10 + (buf[j] - '0');
+      }
+      av_list = newAV();
+      if ( m_size == 0 ) {
+        sv_setsv(data_sv, sv_2mortal(newRV_noinc((SV *) av_list)));
+        sv_setsv(error_sv, &PL_sv_undef);
+        return first_crlf + 2;
+      }
+      m_buf = &buf[first_crlf + 2];
+      m_buf_len = buf_len - (first_crlf + 2);
+      m_read = 0;
+      while ( m_buf_len > m_read ) {
+        if (m_buf[0] != '$' ) {
+          return -1;
+        }
+        if (m_buf[1] == '-' && m_buf[2] == '1' ) {
+          av_push(av_list, &PL_sv_undef);
+          m_buf += 5;
+          m_read += 5;
+          continue;
+        }
+        m_first_crlf = _index_crlf(m_buf, m_buf_len - m_read, 0);
+        if ( m_first_crlf < 0 ) {
+          return -2;
+        }
+        m_v_size = 0;
+        for (j=1; j<m_first_crlf; j++ ) {
+          m_v_size = m_v_size * 10 + (m_buf[j] - '0');
+        }
+        if ( m_buf_len - m_read - (m_first_crlf + 2) < m_v_size + 2 ) {
+          return -2;
+        }
+        _av_push(aTHX_ av_list, &m_buf[m_first_crlf+2], m_v_size, utf8);
+        m_buf += m_first_crlf+2+m_v_size+2;
+        m_read += m_first_crlf+2+m_v_size+2;
+        if ( av_len(av_list) + 1 == m_size ) {
+          break;
+        }
+      }
+      if ( av_len(av_list) + 1 < m_size ) {
+        return -2;
+      }
       sv_setsv(data_sv, sv_2mortal(newRV_noinc((SV *) av_list)));
       sv_setsv(error_sv, &PL_sv_undef);
-      return first_crlf + 2;
-    }
-    m_buf = &buf[first_crlf + 2];
-    m_buf_len = buf_len - (first_crlf + 2);
-    m_read = 0;
-    while ( m_buf_len > m_read ) {
-      if (m_buf[0] != '$' ) {
-        return -1;
-      }
-      if (m_buf[1] == '-' && m_buf[2] == '1' ) {
-        av_push(av_list, &PL_sv_undef);
-        m_buf += 5;
-        m_read += 5;
-        continue;
-      }
-      m_first_crlf = _index_crlf(m_buf, m_buf_len - m_read, 0);
-      if ( m_first_crlf < 0 ) {
-        return -2;
-      }
-      m_v_size = 0;
-      for (j=1; j<m_first_crlf; j++ ) {
-        m_v_size = m_v_size * 10 + (m_buf[j] - '0');
-      }
-      if ( m_buf_len - m_read - (m_first_crlf + 2) < m_v_size + 2 ) {
-        return -2;
-      }
-      _av_push(aTHX_ av_list, &m_buf[m_first_crlf+2], m_v_size, utf8);
-      m_buf += m_first_crlf+2+m_v_size+2;
-      m_read += m_first_crlf+2+m_v_size+2;
-      if ( av_len(av_list) + 1 == m_size ) {
-        break;
-      }
-    }
-    if ( av_len(av_list) + 1 < m_size ) {
-      return -2;
-    }
-    sv_setsv(data_sv, sv_2mortal(newRV_noinc((SV *) av_list)));
-    sv_setsv(error_sv, &PL_sv_undef);
-    return first_crlf + 2 + m_read;
-  }
-  else {
-    return -1;
+      return first_crlf + 2 + m_read;
+    default:
+      return -1;
   }
 }
 
-static
+STATIC_INLINE
 ssize_t
 _write_timeout(const int fileno, const double timeout, char * write_buf, const int write_len ) {
     int rv;
@@ -321,7 +327,7 @@ _write_timeout(const int fileno, const double timeout, char * write_buf, const i
 }
 
 
-static
+STATIC_INLINE
 ssize_t
 _read_timeout(const int fileno, const double timeout, char * read_buf, const int read_len ) {
     int rv;
@@ -350,6 +356,7 @@ _read_timeout(const int fileno, const double timeout, char * read_buf, const int
     goto DO_READ;
 }
 
+STATIC_INLINE
 void
 disconnect_socket (pTHX_ Redis_Jet * self) {
   self->fileno = 0;
@@ -379,7 +386,7 @@ _new(class, args)
         self->server = newSVsv(*server_ssv);
       }
       else {
-        self->server = newSVpv("127.0.0.1:6379",0);
+        self->server = newSVpvs("127.0.0.1:6379");
       }
       self->utf8 = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "utf8", 0);
       self->connect_timeout = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "connect_timeout", 10);
@@ -553,8 +560,6 @@ command(self,...)
     ssize_t parsed_response;
     long int parse_result;
   PPCODE:
-
-
     /* init */
     if ( self->request_buf_len == 0 ) {
       Newx(self->request_buf, REQUEST_BUF_SIZE, char);
@@ -566,7 +571,7 @@ command(self,...)
     }
     if ( self->response_st_len == 0 ) {
       Newx(self->response_st, sizeof(struct jet_response_st)*10, struct jet_response_st);
-      self->response_st_len = 10;
+      self->response_st_len = 30;
     }
     DO_CONNECT:
     /* connect */
@@ -748,12 +753,12 @@ command(self,...)
       if ( PIPELINE(ix) ) {
         for (i=0; i<pipeline_len; i++) {
           data_av = newAV();
-          (void)av_push(data_av, newSVpv("0 but true",0));
+          (void)av_push(data_av, newSVpvs("0 but true"));
           PUSHs( sv_2mortal(newRV_noinc((SV *) data_av)) );
         }
       }
       else {
-        PUSHs(sv_2mortal(newSVpv("0 but true",0)));
+        PUSHs(sv_2mortal(newSVpvs("0 but true")));
       }
       goto COMMAND_DONE;
     }
@@ -787,7 +792,8 @@ command(self,...)
         (void)SvUPGRADE(data_sv, SVt_PV);
         error_sv = newSV(0);
         (void)SvUPGRADE(error_sv, SVt_PV);
-        parse_result = _parse_message(aTHX_ &self->read_buf[parse_offset], readed - parse_offset, data_sv, error_sv, self->utf8);
+        parse_result = _parse_message(aTHX_ &self->read_buf[parse_offset],
+                                            readed - parse_offset, data_sv, error_sv, self->utf8);
         if ( parse_result == -1 ) {
           /* corruption */
           disconnect_socket(self);
@@ -795,13 +801,13 @@ command(self,...)
             for (i=parsed_response; i<pipeline_len; i++) {
               data_av = newAV();
               (void)av_push(data_av, &PL_sv_undef);
-              (void)av_push(data_av, newSVpv("failed to read message: corrupted message found",0));
+              (void)av_push(data_av, newSVpvs("failed to read message: corrupted message found"));
               self->response_st[i].data = newRV_noinc((SV*)data_av);
             }
           }
           else {
             self->response_st[0].data = &PL_sv_undef;
-            self->response_st[1].data = newSVpv("failed to read message: corrupted message found",0);
+            self->response_st[1].data = newSVpvs("failed to read message: corrupted message found");
           }
           goto PARSER_DONE;
         }
@@ -846,7 +852,7 @@ command(self,...)
         PUSHs( sv_2mortal(self->response_st[1].data) );
       }
       else {
-        sv_2mortal(self->response_st[1].data);
+        sv_2mortal(self->response_st[1].data); /* XXX */
       }
     }
     
@@ -855,7 +861,7 @@ command(self,...)
       Safefree(self->request_buf);
       self->request_buf_len = 0;
     }
-    if ( self->response_st_len > 10 ) {
+    if ( self->response_st_len > 100 ) {
       Safefree(self->response_st);
       self->response_st_len = 0;
     }
