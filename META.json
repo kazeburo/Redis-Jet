@@ -68,6 +68,6 @@
          "web" : "https://github.com/kazeburo/Redis-Jet"
       }
    },
-   "version" : "0.01",
+   "version" : "0.02",
    "x_authority" : "cpan:KAZEBURO"
 }

@@ -2,6 +2,12 @@ Revision history for Perl extension Redis-Jet
 
 {{$NEXT}}
 
+0.02 2014-11-07T15:35:05Z
+
+    - refactored
+    - bug fix around close socket
+    - bug fix around noreply read
+
 0.01 2014-11-04T06:03:50Z
 
     - original version
