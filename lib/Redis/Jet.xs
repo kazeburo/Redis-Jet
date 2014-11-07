@@ -698,7 +698,7 @@ command(self,...)
     write_buf = &self->request_buf[0];
     while ( request_len > written ) {
       ret = _write_timeout(self->fileno, self->io_timeout, write_buf, request_len - written);
-      if ( ret < 0 ) {
+      if ( ret <= 0 ) {
         break;
       }
       written += ret;
@@ -744,7 +744,7 @@ command(self,...)
 
     /* noreply */
     if ( self->noreply > 0 ) {
-      ret = read(self->fileno, NULL, READ_MAX);
+      ret = read(self->fileno, &self->read_buf[0], READ_MAX);
       if ( PIPELINE(ix) ) {
         for (i=0; i<pipeline_len; i++) {
           data_av = newAV();
