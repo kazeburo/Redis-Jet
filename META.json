@@ -4,7 +4,7 @@
       "Masahiro Nagano <kazeburo@gmail.com>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Minilla/v1.1.0, CPAN::Meta::Converter version 2.141170",
+   "generated_by" : "Minilla/v2.4.1, CPAN::Meta::Converter version 2.141170",
    "license" : [
       "perl_5"
    ],
@@ -28,8 +28,6 @@
    "prereqs" : {
       "configure" : {
          "requires" : {
-            "CPAN::Meta" : "0",
-            "CPAN::Meta::Prereqs" : "0",
             "Devel::CheckCompiler" : "0.04",
             "Module::Build" : "0.38"
          }
@@ -68,6 +66,9 @@
          "web" : "https://github.com/kazeburo/Redis-Jet"
       }
    },
-   "version" : "0.02",
-   "x_authority" : "cpan:KAZEBURO"
+   "version" : "0.03",
+   "x_authority" : "cpan:KAZEBURO",
+   "x_contributors" : [
+      "Syohei YOSHIDA <syohex@gmail.com>"
+   ]
 }
