@@ -476,7 +476,7 @@ _destroy(self)
     if ( self->read_buf_len != 0 ) {
       Safefree(self->read_buf);
     }
-    disconnect_socket(self);
+    disconnect_socket(aTHX_ self);
     SvREFCNT_dec((SV*)self->server);
     SvREFCNT_dec((SV*)self->bucket);
     Safefree(self);
@@ -589,7 +589,7 @@ command(self,...)
       }
       if ( self->fileno == 0 ) {
         /* connection error */
-        disconnect_socket(self);
+        disconnect_socket(aTHX_ self);
         if ( self->reconnect_attempts > 0 && self->reconnect_attempts > connect_retry ) {
           connect_retry++;
           usleep(self->reconnect_delay*1000000); // micro-sec
@@ -724,7 +724,7 @@ command(self,...)
 
     /* request error */
     if (ret <= 0) {
-      disconnect_socket(self);
+      disconnect_socket(aTHX_ self);
       if ( ret == 0 && self->reconnect_attempts > 0 && self->reconnect_attempts > connect_retry ) {
         connect_retry++;
         usleep(self->reconnect_delay*1000000);  // micro-sec
@@ -771,7 +771,7 @@ command(self,...)
       ret = _read_timeout(self->fileno, self->io_timeout, &self->read_buf[readed], READ_MAX);
       if ( ret <= 0 ) {
         /* timeout or error */
-        disconnect_socket(self);
+        disconnect_socket(aTHX_ self);
         if ( PIPELINE(ix) ) {
           for (i=parsed_response; i<pipeline_len; i++) {
             data_av = newAV();
@@ -796,7 +796,7 @@ command(self,...)
                                             readed - parse_offset, data_sv, error_sv, self->utf8);
         if ( parse_result == -1 ) {
           /* corruption */
-          disconnect_socket(self);
+          disconnect_socket(aTHX_ self);
           if ( PIPELINE(ix) ) {
             for (i=parsed_response; i<pipeline_len; i++) {
               data_av = newAV();
