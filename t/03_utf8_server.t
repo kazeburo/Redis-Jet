@@ -6,6 +6,11 @@ use File::Temp;
 use Test::TCP;
 
 my $tmp_dir = File::Temp->newdir( CLEANUP => 1 );
+eval {
+    my $redis_server = Test::RedisServer->new;
+} or plan skip_all => 'redis-server is required for this test';
+
+
 
 test_tcp(
     client => sub {
