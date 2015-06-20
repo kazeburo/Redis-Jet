@@ -7,6 +7,6 @@ on 'configure' => sub {
 on 'test' => sub {
     requires 'Test::More', '0.98';
     requires 'Test::TCP', '2';
-    requires 'Test::RedisServer', '0.14';
+    requires 'Test::RedisServer', '0.20';
 };
 
