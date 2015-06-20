@@ -14,8 +14,8 @@ test_tcp(
         is_deeply([$jet->pipeline(qw/ping ping ping ping/)],[
             ['OK'],
             ['OK'],
-            [undef,'failed to read message: corrupted message found'],
-            [undef,'failed to read message: corrupted message found']
+            [undef,'failed to parse message: corrupted message found'],
+            [undef,'failed to parse message: corrupted message found']
         ]);
     },
     server => sub {
@@ -44,12 +44,13 @@ test_tcp(
     client => sub {
         my ($port, $server_pid) = @_;
         my $jet = Redis::Jet->new( server => 'localhost:'.$port, io_timeout => 5 );
-        is_deeply([$jet->pipeline(qw/ping ping ping ping/)],[
-            ['OK'],
-            ['OK'],
-            [undef,'failed to read message: Resource temporarily unavailable'],
-            [undef,'failed to read message: Resource temporarily unavailable']
-        ]);
+        my @ret = $jet->pipeline(qw/ping ping ping ping/);
+        is_deeply($ret[0],['OK']);
+        is_deeply($ret[1],['OK']);
+        is($ret[2][0],undef);
+        like($ret[2][1],qr/^failed to read message:/);
+        is($ret[3][0],undef);
+        like($ret[2][1],qr/^failed to read message:/);
     },
     server => sub {
         my ($port) = @_;

@@ -801,13 +801,13 @@ command(self,...)
             for (i=parsed_response; i<pipeline_len; i++) {
               data_av = newAV();
               (void)av_push(data_av, &PL_sv_undef);
-              (void)av_push(data_av, newSVpvs("failed to read message: corrupted message found"));
+              (void)av_push(data_av, newSVpvs("failed to parse message: corrupted message found"));
               self->response_st[i].data = newRV_noinc((SV*)data_av);
             }
           }
           else {
             self->response_st[0].data = &PL_sv_undef;
-            self->response_st[1].data = newSVpvs("failed to read message: corrupted message found");
+            self->response_st[1].data = newSVpvs("failed to parse message: corrupted message found");
           }
           goto PARSER_DONE;
         }
