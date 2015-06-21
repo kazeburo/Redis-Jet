@@ -6,17 +6,14 @@ Redis::Jet - Yet another XS implemented Redis Client
 
     use Redis::Jet;
     
-
     my $jet = Redis::Jet->new( server => 'localhost:6379' );
     my $ret = $jet->command(qw/set redis data-server/); # $ret eq 'OK'
     my $value = $jet->command(qw/get redis/); # $value eq 'data-server'
     
-
     my $ret = $jet->command(qw/set memcached cache-server/);
     my $values = $jet->command(qw/mget redis memcached mysql/);
     # $values eq ['data-server','memcached',undef]
     
-
     ## error handling
     ($values,$error) = $jet->command(qw/get redis memcached mysql/);
     # $error eq q!ERR wrong number of arguments for 'get' command!
@@ -98,7 +95,6 @@ simple interfaces to communicate with Redis server
     fast   58519/s  271%    --  -53%
     jet   124185/s  688%  112%    --
     
-
     Physical server
     Intel Xeon CPU E3-1240 v3 @ 3.40GHz | 4core/8thread    
     redis-2.8.17
@@ -109,11 +105,11 @@ simple interfaces to communicate with Redis server
 
 # SEE ALSO
 
-\* [Redis](http://search.cpan.org/perldoc?Redis)
+\* [Redis](https://metacpan.org/pod/Redis)
 
-\* [Redis::Fast](http://search.cpan.org/perldoc?Redis::Fast)
+\* [Redis::Fast](https://metacpan.org/pod/Redis::Fast)
 
-\* [Redis::hiredis](http://search.cpan.org/perldoc?Redis::hiredis)
+\* [Redis::hiredis](https://metacpan.org/pod/Redis::hiredis)
 
 \* http://redis.io/
 

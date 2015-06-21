@@ -14,7 +14,7 @@ our @EXPORT_OK = qw/
                     parse_message parse_message_utf8
                 /;
 
-our $VERSION = "0.04";
+our $VERSION = "0.05";
 
 use XSLoader;
 XSLoader::load(__PACKAGE__, $VERSION);
