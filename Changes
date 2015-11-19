@@ -2,6 +2,10 @@ Revision history for Perl extension Redis-Jet
 
 {{$NEXT}}
 
+0.06 2015-11-19T23:57:46Z
+
+    - accept args as hashref in new (thanks adokoy001)
+
 0.05 2015-06-21T02:25:37Z
 
     - fixed test. changed error message
