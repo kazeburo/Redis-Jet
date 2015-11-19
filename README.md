@@ -37,7 +37,7 @@ simple interfaces to communicate with Redis server
 
 - `my $obj = Redis::Jet->new(%args)`
 
-    Create a new instance.
+    Create a new instance. Can also accept args as hashref.
 
     - `server => "server:port"`
 

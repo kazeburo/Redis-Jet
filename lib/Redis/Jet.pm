@@ -105,7 +105,7 @@ simple interfaces to communicate with Redis server
 
 =item C<< my $obj = Redis::Jet->new(%args) >>
 
-Create a new instance.
+Create a new instance. Can also accept args as hashref.
 
 =over 4
 
