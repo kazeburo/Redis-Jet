@@ -21,7 +21,7 @@ XSLoader::load(__PACKAGE__, $VERSION);
 
 sub new {
     my $class = shift;
-    my %args = ref $_ ? %{$_[0]} : @_;
+    my %args = ref $_[0] ? %{$_[0]} : @_;
     %args = (
         server => '127.0.0.1:6379',
         connect_timeout => 5,
