@@ -53,6 +53,14 @@ struct redis_jet_s {
 };
 typedef struct redis_jet_s Redis_Jet;
 
+STATIC_INLINE
+void
+_smaller_zero_err(const char * key) {
+    char* errmsg = calloc(strlen(key) + 26, sizeof(char));
+    sprintf(errmsg, "%s must be larger than zero", key);
+    croak(errmsg);
+    free(errmsg);
+}
 
 STATIC_INLINE
 int
@@ -66,6 +74,14 @@ hv_fetch_iv(pTHX_ HV * hv, const char * key, const int defaultval ) {
 }
 
 STATIC_INLINE
+int
+hv_fetch_iv_positive_number(pTHX_ HV * hv, const char * key, const int defaultval) {
+    int ret = hv_fetch_iv(aTHX_ (hv), key, defaultval);
+    if (ret < 0) _smaller_zero_err(key);
+    return ret;
+}
+
+STATIC_INLINE
 double
 hv_fetch_nv(pTHX_ HV * hv, const char * key, const double defaultval ) {
   SV **ssv;
@@ -74,6 +90,14 @@ hv_fetch_nv(pTHX_ HV * hv, const char * key, const double defaultval ) {
     return SvNV(*ssv);
   }
   return defaultval;
+}
+
+STATIC_INLINE
+double
+hv_fetch_nv_positive_number(pTHX_ HV * hv, const char * key, const double defaultval) {
+    double ret = hv_fetch_nv(aTHX_ (hv), key, defaultval);
+    if (ret < 0) _smaller_zero_err(key);
+    return ret;
 }
 
 STATIC_INLINE
@@ -388,12 +412,12 @@ _new(class, args)
       else {
         self->server = newSVpvs("127.0.0.1:6379");
       }
-      self->utf8 = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "utf8", 0);
-      self->connect_timeout = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "connect_timeout", 10);
-      self->io_timeout = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "io_timeout", 10);
-      self->noreply = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "noreply", 0);
-      self->reconnect_attempts = hv_fetch_iv(aTHX_ (HV *)SvRV(args), "reconnect_attempts", 0);
-      self->reconnect_delay = hv_fetch_nv(aTHX_ (HV *)SvRV(args), "reconnect_delay", 10);
+      self->utf8 = hv_fetch_iv_positive_number(aTHX_ (HV *)SvRV(args), "utf8", 0);
+      self->connect_timeout = hv_fetch_nv_positive_number(aTHX_ (HV *)SvRV(args), "connect_timeout", 10);
+      self->io_timeout = hv_fetch_nv_positive_number(aTHX_ (HV *)SvRV(args), "io_timeout", 10);
+      self->noreply = hv_fetch_iv_positive_number(aTHX_ (HV *)SvRV(args), "noreply", 0);
+      self->reconnect_attempts = hv_fetch_iv_positive_number(aTHX_ (HV *)SvRV(args), "reconnect_attempts", 0);
+      self->reconnect_delay = hv_fetch_nv_positive_number(aTHX_ (HV *)SvRV(args), "reconnect_delay", 10);
       self->bucket = newHV();
     }
     else {
@@ -590,7 +614,7 @@ command(self,...)
       if ( self->fileno == 0 ) {
         /* connection error */
         disconnect_socket(aTHX_ self);
-        if ( self->reconnect_attempts > 0 && self->reconnect_attempts > connect_retry ) {
+        if ( self->reconnect_attempts > connect_retry ) {
           connect_retry++;
           usleep(self->reconnect_delay*1000000); // micro-sec
           goto DO_CONNECT;
@@ -725,7 +749,7 @@ command(self,...)
     /* request error */
     if (ret <= 0) {
       disconnect_socket(aTHX_ self);
-      if ( ret == 0 && self->reconnect_attempts > 0 && self->reconnect_attempts > connect_retry ) {
+      if ( ret == 0 && self->reconnect_attempts > connect_retry ) {
         connect_retry++;
         usleep(self->reconnect_delay*1000000);  // micro-sec
         goto DO_CONNECT;
