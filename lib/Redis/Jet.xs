@@ -57,10 +57,11 @@ typedef struct redis_jet_s Redis_Jet;
 STATIC_INLINE
 void
 _smaller_zero_err(const char * key) {
-    char* errmsg = calloc(strlen(key) + 26, sizeof(char));
+    char* errmsg;
+    Newx(errmsg, strlen(key) + 26, char);
     sprintf(errmsg, "%s must be larger than zero", key);
     croak(errmsg);
-    free(errmsg);
+    Safefree(errmsg);
 }
 
 STATIC_INLINE
