@@ -113,7 +113,7 @@ char *
 svpv2char(pTHX_ SV *string, STRLEN *len, const int utf8) {
     char *str;
     STRLEN str_len;
-    if ( utf8 == 1 ) {
+    if ( utf8 ) {
         SvGETMAGIC(string);
         if (!SvUTF8(string)) {
             string = sv_mortalcopy(string);
