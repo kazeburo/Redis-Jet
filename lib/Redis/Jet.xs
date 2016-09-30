@@ -106,18 +106,14 @@ STATIC_INLINE
 void
 memcat( char * dst, ssize_t *dst_len, const char * src, const ssize_t src_len ) {
     ssize_t i;
-    ssize_t dlen = *dst_len;
-    for ( i=0; i<src_len; i++) {
-        dst[dlen++] = src[i];
-    }
-    *dst_len = dlen;
+    strncpy(dst + *dst_len, src, src_len);
+    *dst_len += src_len;
 }
 
 STATIC_INLINE
 char *
 svpv2char(pTHX_ SV *string, STRLEN *len, const int utf8) {
     char *str;
-    STRLEN str_len;
     if ( utf8 ) {
         SvGETMAGIC(string);
         if (!SvUTF8(string)) {
@@ -125,8 +121,7 @@ svpv2char(pTHX_ SV *string, STRLEN *len, const int utf8) {
             sv_utf8_encode(string);
         }
     }
-    str = (char *)SvPV(string,str_len);
-    *len = str_len;
+    str = (char *)SvPV(string,*len);
     return str;
 }
 
@@ -574,7 +569,7 @@ command(self,...)
     int connect_retry = 0;
     ssize_t pipeline_len = 1;
     ssize_t request_len = 0;
-    STRLEN request_arg_len;
+    STRLEN request_arg_len = 0;
     char * request_arg;
     AV * request_arg_list;
     /* send */
@@ -716,6 +711,7 @@ command(self,...)
         memcat_i(self->request_buf, &request_len, request_arg_len, fig);
         self->request_buf[request_len++] = 13; /* \r */
         self->request_buf[request_len++] = 10; /* \n */
+        renewmem(aTHX_ &self->request_buf, &self->request_buf_len, request_arg_len + request_len); /* need size:  self->request_buf_len + request_arg_len - (self->request_buf_len - request_len) */
         memcat(self->request_buf, &request_len, request_arg, request_arg_len);
         self->request_buf[request_len++] = 13; /* \r */
         self->request_buf[request_len++] = 10; /* \n */
