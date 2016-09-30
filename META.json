@@ -50,7 +50,8 @@
          "requires" : {
             "Test::More" : "0.98",
             "Test::RedisServer" : "0.20",
-            "Test::TCP" : "2"
+            "Test::TCP" : "2",
+            "Test::LeakTrace" : "0.15"
          }
       }
    },
