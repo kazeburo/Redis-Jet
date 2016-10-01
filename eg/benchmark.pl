@@ -26,7 +26,7 @@ say "jet:", $jet->command(qw/get foo/);
 print "single get =======\n";
 
 cmpthese(
-    -3,
+    -1,
     {
         fast => sub {
             my $val = $fast->get('foo');
@@ -46,7 +46,7 @@ cmpthese(
 print "single incr =======\n";
 
 cmpthese(
-    -3,
+    -1,
     {
         fast => sub {
             my $val = $fast->incr('incrfoo');
@@ -70,7 +70,7 @@ print "pipeline =======\n";
 
 my $cb = sub {};
 cmpthese(
-    -3,
+    -1,
     {
         fast => sub {
             my @res;

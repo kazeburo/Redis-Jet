@@ -103,12 +103,9 @@ hv_fetch_nv_positive_number(pTHX_ HV * hv, const char * key, const double defaul
 STATIC_INLINE
 void
 memcat( char * dst, ssize_t *dst_len, const char * src, const ssize_t src_len ) {
-    ssize_t i;
     ssize_t dlen = *dst_len;
-    for ( i=0; i<src_len; i++) {
-        dst[dlen++] = src[i];
-    }
-    *dst_len = dlen;
+    memcpy(&dst[dlen], src, src_len);
+    *dst_len = dlen + src_len;
 }
 
 STATIC_INLINE
@@ -154,6 +151,14 @@ STATIC_INLINE
 long int
 _index_crlf(const char * buf, const ssize_t buf_len, ssize_t offset) {
   ssize_t ret = -1;
+  char *p;
+  p = memchr(&buf[offset],'\r',buf_len);
+  if (!p) {
+      return ret;
+  }
+  if ( *(p+1) == '\n' ) {
+      return p - &buf[offset] + offset;
+  }
   while( offset < buf_len -1 ) {
     if (buf[offset] == 13 && buf[offset+1] == 10 ) {
       ret = offset;
@@ -178,13 +183,9 @@ STATIC_INLINE
 void
 _sv_store(pTHX_ SV * data_sv, char * buf, ssize_t copy_len, int utf8) {
     char * d;
-    ssize_t i;
-    ssize_t dlen = 0;
     d = SvGROW(data_sv, copy_len);
-    for (i=0; i<copy_len; i++){
-      d[dlen++] = buf[i];
-    }
-    SvCUR_set(data_sv, dlen);
+    memcpy(d, buf, copy_len);
+    SvCUR_set(data_sv, copy_len);
     SvPOK_only(data_sv);
     if ( utf8 ) {
       SvUTF8_on(data_sv);
@@ -336,9 +337,9 @@ _write_timeout(const int fileno, const double timeout, char * write_buf, const i
       return rv;
     }
   WAIT_WRITE:
+    wfds[0].fd = fileno;
+    wfds[0].events = POLLOUT;
     while (1) {
-      wfds[0].fd = fileno;
-      wfds[0].events = POLLOUT;
       nfound = poll(wfds, 1, (int)timeout*1000);
       if ( nfound == 1 ) {
         break;
@@ -357,9 +358,8 @@ _read_timeout(const int fileno, const double timeout, char * read_buf, const int
     int rv;
     int nfound;
     struct pollfd rfds[1];
+    goto WAIT_READ;
   DO_READ:
-    rfds[0].fd = fileno;
-    rfds[0].events = POLLIN;
     rv = read(fileno, read_buf, read_len);
     if ( rv >= 0 ) {
       return rv;
@@ -368,6 +368,8 @@ _read_timeout(const int fileno, const double timeout, char * read_buf, const int
       return rv;
     }
   WAIT_READ:
+    rfds[0].fd = fileno;
+    rfds[0].events = POLLIN;
     while (1) {
       nfound = poll(rfds, 1, (int)timeout*1000);
       if ( nfound == 1 ) {
