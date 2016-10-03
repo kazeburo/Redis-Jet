@@ -103,9 +103,8 @@ hv_fetch_nv_positive_number(pTHX_ HV * hv, const char * key, const double defaul
 STATIC_INLINE
 void
 memcat( char * dst, ssize_t *dst_len, const char * src, const ssize_t src_len ) {
-    ssize_t dlen = *dst_len;
-    memcpy(&dst[dlen], src, src_len);
-    *dst_len = dlen + src_len;
+    memcpy(&dst[*dst_len], src, src_len);
+    *dst_len += src_len;
 }
 
 STATIC_INLINE
