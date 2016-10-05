@@ -113,7 +113,6 @@ STATIC_INLINE
 char *
 svpv2char(pTHX_ SV *string, STRLEN *len, const int utf8) {
     char *str;
-    STRLEN str_len;
     if ( utf8 ) {
         SvGETMAGIC(string);
         if (!SvUTF8(string)) {
@@ -121,8 +120,7 @@ svpv2char(pTHX_ SV *string, STRLEN *len, const int utf8) {
             sv_utf8_encode(string);
         }
     }
-    str = (char *)SvPV(string,str_len);
-    *len = str_len;
+    str = (char *)SvPV(string, *len);
     return str;
 }
 
