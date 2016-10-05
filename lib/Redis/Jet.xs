@@ -58,10 +58,7 @@ STATIC_INLINE
 void
 _smaller_zero_err(const char * key) {
     char* errmsg;
-    Newx(errmsg, strlen(key) + 26, char);
-    sprintf(errmsg, "%s must be larger than zero", key);
-    croak(errmsg);
-    Safefree(errmsg);
+    croak("%s must be larger than zero", key);
 }
 
 STATIC_INLINE

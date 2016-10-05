@@ -77,31 +77,7 @@ simple interfaces to communicate with Redis server
 
 # BENCHMARK
 
-    single get =======
-                Rate   redis    fast hiredis     jet
-    redis    46036/s      --    -58%    -70%    -75%
-    fast    110682/s    140%      --    -29%    -39%
-    hiredis 155172/s    237%     40%      --    -15%
-    jet     181695/s    295%     64%     17%      --
-    single incr =======
-                Rate   redis    fast hiredis     jet
-    redis    49118/s      --    -58%    -70%    -73%
-    fast    116294/s    137%      --    -29%    -37%
-    hiredis 164938/s    236%     42%      --    -11%
-    jet     184497/s    276%     59%     12%      --
-    pipeline =======
-              Rate redis  fast   jet
-    redis  15754/s    --  -73%  -87%
-    fast   58519/s  271%    --  -53%
-    jet   124185/s  688%  112%    --
-    
-    Physical server
-    Intel Xeon CPU E3-1240 v3 @ 3.40GHz | 4core/8thread    
-    redis-2.8.17
-    Perl-5.20.1
-    Redis 1.976
-    Redis::Fast 0.13
-    Redis::hiredis 0.11.0
+https://gist.github.com/kazeburo/608fc2ba0748e6ab3663
 
 # SEE ALSO
 
