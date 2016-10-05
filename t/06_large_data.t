@@ -4,8 +4,6 @@ use Redis::Jet;
 use Test::RedisServer;
 use File::Temp;
 use Test::TCP;
-use Test::LeakTrace;
-
 
 my $tmp_dir = File::Temp->newdir( CLEANUP => 1 );
 eval {
@@ -15,11 +13,14 @@ eval {
 test_tcp(
     client => sub {
         my ($port, $server_pid) = @_;
-        no_leaks_ok {
-            my $jet = Redis::Jet->new( server => 'localhost:'.$port, io_timeout => 5 );
-            $jet->command(qw/set foo bar/);
-            $jet->command(qw/get foo/);
-        }, 'normal check';
+        my $jet = Redis::Jet->new( server => 'localhost:'.$port, io_timeout => 5 );
+
+        my $large_data = 'K' x 1048576; # 1mb
+        is $jet->command(qw/set foo/, $large_data), 'OK';
+        is $jet->command(qw/get foo/), $large_data;
+        
+        is $jet->command('set', $large_data, $large_data), 'OK';
+        is $jet->command('get', $large_data), $large_data;
     },
     server => sub {
         my ($port) = @_;

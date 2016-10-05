@@ -573,7 +573,7 @@ command(self,...)
     int connect_retry = 0;
     ssize_t pipeline_len = 1;
     ssize_t request_len = 0;
-    STRLEN request_arg_len;
+    STRLEN request_arg_len = 0;
     char * request_arg;
     AV * request_arg_list;
     /* send */
@@ -715,6 +715,7 @@ command(self,...)
         memcat_i(self->request_buf, &request_len, request_arg_len, fig);
         self->request_buf[request_len++] = 13; /* \r */
         self->request_buf[request_len++] = 10; /* \n */
+        renewmem(aTHX_ &self->request_buf, &self->request_buf_len, request_arg_len + request_len); /* need size:  self->request_buf_len + request_arg_len - (self->request_buf_len - request_len) */
         memcat(self->request_buf, &request_len, request_arg, request_arg_len);
         self->request_buf[request_len++] = 13; /* \r */
         self->request_buf[request_len++] = 10; /* \n */
