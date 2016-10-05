@@ -57,7 +57,6 @@ typedef struct redis_jet_s Redis_Jet;
 STATIC_INLINE
 void
 _smaller_zero_err(const char * key) {
-    char* errmsg;
     croak("%s must be larger than zero", key);
 }
 
