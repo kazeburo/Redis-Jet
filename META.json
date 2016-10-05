@@ -67,7 +67,7 @@
          "web" : "https://github.com/kazeburo/Redis-Jet"
       }
    },
-   "version" : "0.07",
+   "version" : "0.08",
    "x_authority" : "cpan:KAZEBURO",
    "x_contributors" : [
       "Syohei YOSHIDA <syohex@gmail.com>",
