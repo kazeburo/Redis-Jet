@@ -13,7 +13,8 @@ extern "C" {
 } /* extern "C" */
 #endif
 
-#define NEED_newSVpvn_flags
+#define NEED_newRV_noinc
+#define NEED_sv_2pv_flags
 #include "ppport.h"
 
 #ifndef STATIC_INLINE /* a public perl API from 5.13.4 */
@@ -56,10 +57,11 @@ typedef struct redis_jet_s Redis_Jet;
 STATIC_INLINE
 void
 _smaller_zero_err(const char * key) {
-    char* errmsg = calloc(strlen(key) + 26, sizeof(char));
+    char* errmsg;
+    Newx(errmsg, strlen(key) + 26, char);
     sprintf(errmsg, "%s must be larger than zero", key);
     croak(errmsg);
-    free(errmsg);
+    Safefree(errmsg);
 }
 
 STATIC_INLINE
@@ -111,16 +113,14 @@ STATIC_INLINE
 char *
 svpv2char(pTHX_ SV *string, STRLEN *len, const int utf8) {
     char *str;
-    STRLEN str_len;
-    if ( utf8 == 1 ) {
+    if ( utf8 ) {
         SvGETMAGIC(string);
         if (!SvUTF8(string)) {
             string = sv_mortalcopy(string);
             sv_utf8_encode(string);
         }
     }
-    str = (char *)SvPV(string,str_len);
-    *len = str_len;
+    str = (char *)SvPV(string, *len);
     return str;
 }
 
@@ -573,7 +573,7 @@ command(self,...)
     int connect_retry = 0;
     ssize_t pipeline_len = 1;
     ssize_t request_len = 0;
-    STRLEN request_arg_len;
+    STRLEN request_arg_len = 0;
     char * request_arg;
     AV * request_arg_list;
     /* send */
@@ -617,7 +617,7 @@ command(self,...)
         disconnect_socket(aTHX_ self);
         if ( self->reconnect_attempts > connect_retry ) {
           connect_retry++;
-          usleep(self->reconnect_delay*1000000); // micro-sec
+          usleep(self->reconnect_delay*1000000); /* micro-sec */
           goto DO_CONNECT;
         }
         if ( PIPELINE(ix) ) {
@@ -644,8 +644,8 @@ command(self,...)
     /* connection successful */
     connect_retry = 0;
 
-    // char * s = SvPV_nolen(ST(1));
-    // printf("ix:%d,fileno:%d,utf8:%d,timeout:%f,noreply:%d, items:%d %s\n",ix,self->fileno,self->utf8,self->io_timeout,self->noreply,items,&s[0]);
+    /* char * s = SvPV_nolen(ST(1)); */
+    /* printf("ix:%d,fileno:%d,utf8:%d,timeout:%f,noreply:%d, items:%d %s\n",ix,self->fileno,self->utf8,self->io_timeout,self->noreply,items,&s[0]); */
 
 
     /* build_message */
@@ -660,8 +660,8 @@ command(self,...)
           renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2);
           self->request_buf[request_len++] = '*';
           memcat_i(self->request_buf, &request_len, av_len(request_arg_list)+1, fig);
-          self->request_buf[request_len++] = 13; // \r
-          self->request_buf[request_len++] = 10; // \n
+          self->request_buf[request_len++] = 13; /* \r */
+          self->request_buf[request_len++] = 10; /* \n */
           for (j=0; j<av_len(request_arg_list)+1; j++) {
             request_arg = svpv2char(aTHX_ *av_fetch(request_arg_list,j,0), &request_arg_len, self->utf8);
             fig = FIGURES(request_arg_len);
@@ -669,11 +669,11 @@ command(self,...)
             renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2 + request_arg_len + 2);
             self->request_buf[request_len++] = '$';
             memcat_i(self->request_buf, &request_len, request_arg_len, fig);
-            self->request_buf[request_len++] = 13; // \r
-            self->request_buf[request_len++] = 10; // \n
+            self->request_buf[request_len++] = 13; /* \r */
+            self->request_buf[request_len++] = 10; /* \n */
             memcat(self->request_buf, &request_len, request_arg, request_arg_len);
-            self->request_buf[request_len++] = 13; // \r
-            self->request_buf[request_len++] = 10; // \n
+            self->request_buf[request_len++] = 13; /* \r */
+            self->request_buf[request_len++] = 10; /* \n */
           }
        }
        else {
@@ -681,19 +681,19 @@ command(self,...)
           renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + 1 + 2);
           self->request_buf[request_len++] = '*';
           self->request_buf[request_len++] = '1';
-          self->request_buf[request_len++] = 13; // \r
-          self->request_buf[request_len++] = 10; // \n
+          self->request_buf[request_len++] = 13; /* \r */
+          self->request_buf[request_len++] = 10; /* \n */
           request_arg = svpv2char(aTHX_ ST(i), &request_arg_len, self->utf8);
           fig = FIGURES(request_arg_len);
           /* 1($) + fig + 2(crlf) + command_arg_len + 2 */
           renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2 + request_arg_len + 2);
           self->request_buf[request_len++] = '$';
           memcat_i(self->request_buf, &request_len, request_arg_len, fig);
-          self->request_buf[request_len++] = 13; // \r
-          self->request_buf[request_len++] = 10; // \n
+          self->request_buf[request_len++] = 13; /* \r */
+          self->request_buf[request_len++] = 10; /* \n */
           memcat(self->request_buf, &request_len, request_arg, request_arg_len);
-          self->request_buf[request_len++] = 13; // \r
-          self->request_buf[request_len++] = 10; // \n
+          self->request_buf[request_len++] = 13; /* \r */
+          self->request_buf[request_len++] = 10; /* \n */
         }
       }
     }
@@ -704,8 +704,8 @@ command(self,...)
       renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2);
       self->request_buf[request_len++] = '*';
       memcat_i(self->request_buf, &request_len, items-args_offset, fig);
-      self->request_buf[request_len++] = 13; // \r
-      self->request_buf[request_len++] = 10; // \n
+      self->request_buf[request_len++] = 13; /* \r */
+      self->request_buf[request_len++] = 10; /* \n */
       for (j=args_offset; j<items; j++) {
         request_arg = svpv2char(aTHX_ ST(j), &request_arg_len, self->utf8);
         fig = FIGURES(request_arg_len);
@@ -713,16 +713,17 @@ command(self,...)
         renewmem(aTHX_ &self->request_buf, &self->request_buf_len, 1 + fig + 2 + request_arg_len + 2);
         self->request_buf[request_len++] = '$';
         memcat_i(self->request_buf, &request_len, request_arg_len, fig);
-        self->request_buf[request_len++] = 13; // \r
-        self->request_buf[request_len++] = 10; // \n
+        self->request_buf[request_len++] = 13; /* \r */
+        self->request_buf[request_len++] = 10; /* \n */
+        renewmem(aTHX_ &self->request_buf, &self->request_buf_len, request_arg_len + request_len); /* need size:  self->request_buf_len + request_arg_len - (self->request_buf_len - request_len) */
         memcat(self->request_buf, &request_len, request_arg, request_arg_len);
-        self->request_buf[request_len++] = 13; // \r
-        self->request_buf[request_len++] = 10; // \n
+        self->request_buf[request_len++] = 13; /* \r */
+        self->request_buf[request_len++] = 10; /* \n */
       }
     }
 
-    // printf("== %s --\n",&self->request_buf[0]);
-    // printf("pipeline_len:%d,%d,%ld\n",args_offset,items,pipeline_len);
+    /* printf("== %s --\n",&self->request_buf[0]); */
+    /* printf("pipeline_len:%d,%d,%ld\n",args_offset,items,pipeline_len); */
     /* send request */
     written = 0;
     write_buf = &self->request_buf[0];
@@ -752,7 +753,7 @@ command(self,...)
       disconnect_socket(aTHX_ self);
       if ( ret == 0 && self->reconnect_attempts > connect_retry ) {
         connect_retry++;
-        usleep(self->reconnect_delay*1000000);  // micro-sec
+        usleep(self->reconnect_delay*1000000);  /* micro-sec */
         goto DO_CONNECT;
       }
       if ( PIPELINE(ix) ) {

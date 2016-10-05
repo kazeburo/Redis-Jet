@@ -8,5 +8,6 @@ on 'test' => sub {
     requires 'Test::More', '0.98';
     requires 'Test::TCP', '2';
     requires 'Test::RedisServer', '0.20';
+    requires 'Test::LeakTrace', '0.15';
 };
 
