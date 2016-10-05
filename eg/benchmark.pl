@@ -10,7 +10,6 @@ use Redis::Jet;
 use Redis;
 use Redis::hiredis;
 
-
 my $redis = Redis->new;
 my $hiredis = Redis::hiredis->new(host=>'localhost',port=>'6379');
 my $fast = Redis::Fast->new;
@@ -18,10 +17,6 @@ my $jet = Redis::Jet->new;
 my $jet_noreply = Redis::Jet->new(noreply=>1);
 
 my @val = $jet->command(qw!set foo foovalue!);
-use Data::Dumper;
-say Dumper(\@val);
-say "fast:", $fast->get('foo');
-say "jet:", $jet->command(qw/get foo/);
 
 print "single get =======\n";
 
