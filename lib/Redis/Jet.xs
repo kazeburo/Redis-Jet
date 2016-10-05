@@ -151,12 +151,12 @@ long int
 _index_crlf(const char * buf, const ssize_t buf_len, ssize_t offset) {
   ssize_t ret = -1;
   char *p;
-  p = memchr(&buf[offset],'\r',buf_len);
+  p = memchr(&buf[offset],'\n',buf_len);
   if (!p) {
       return ret;
   }
-  if ( *(p+1) == '\n' ) {
-      return p - &buf[offset] + offset;
+  if ( *(p-1) == '\r' ) {
+      return p - &buf[offset] + offset - 1;
   }
   while( offset < buf_len -1 ) {
     if (buf[offset] == 13 && buf[offset+1] == 10 ) {

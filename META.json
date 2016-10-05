@@ -4,7 +4,7 @@
       "Masahiro Nagano <kazeburo@gmail.com>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Minilla/v2.4.1, CPAN::Meta::Converter version 2.150005",
+   "generated_by" : "Minilla/v3.0.4, CPAN::Meta::Converter version 2.150005",
    "license" : [
       "perl_5"
    ],
@@ -29,7 +29,7 @@
       "configure" : {
          "requires" : {
             "Devel::CheckCompiler" : "0.04",
-            "Module::Build" : "0.38"
+            "Module::Build" : "0.4005"
          }
       },
       "develop" : {
@@ -48,10 +48,10 @@
       },
       "test" : {
          "requires" : {
+            "Test::LeakTrace" : "0.15",
             "Test::More" : "0.98",
             "Test::RedisServer" : "0.20",
-            "Test::TCP" : "2",
-            "Test::LeakTrace" : "0.15"
+            "Test::TCP" : "2"
          }
       }
    },
@@ -74,5 +74,5 @@
       "ToshiakiYokoda <adokoy001@gmail.com>",
       "itsusony <itsusony@fout.jp>"
    ],
-   "x_serialization_backend" : "JSON::PP version 2.27203"
+   "x_serialization_backend" : "JSON::PP version 2.27400"
 }
