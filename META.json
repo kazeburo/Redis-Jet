@@ -72,7 +72,8 @@
    "x_contributors" : [
       "Syohei YOSHIDA <syohex@gmail.com>",
       "ToshiakiYokoda <adokoy001@gmail.com>",
-      "itsusony <itsusony@fout.jp>"
+      "itsusony <itsusony@fout.jp>",
+      "itsusony <meng.xiangliang1985@gmail.com>"
    ],
    "x_serialization_backend" : "JSON::PP version 2.97001",
    "x_static_install" : 0

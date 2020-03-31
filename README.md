@@ -41,7 +41,7 @@ simple interfaces to communicate with Redis server
 
     - `server => "server:port"`
 
-        server address and port
+        server address and port. For using unix\_socket pass socket path to server like \`server => '/path/to/redis.sock'. When server includes \`/\`, Redis::Jet treat server as unix\_socket.
 
     - connect\_timeout
 
