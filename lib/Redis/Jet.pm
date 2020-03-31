@@ -1,11 +1,12 @@
 package Redis::Jet;
 
-use 5.008005;
+use 5.010001;
 use strict;
 use warnings;
 use POSIX qw(EINTR EAGAIN EWOULDBLOCK :sys_wait_h);
 use IO::Socket qw(:crlf IPPROTO_TCP TCP_NODELAY);
 use IO::Socket::INET;
+use IO::Socket::UNIX;
 use IO::Select;
 use Time::HiRes qw/time/;
 use base qw/Exporter/;
@@ -43,12 +44,20 @@ sub set_socket {
 
 sub connect {
     my $self = shift;
-    my $socket = IO::Socket::INET->new(
-        PeerAddr => $self->get_server,
-        Timeout => $self->get_connect_timeout,
-    ) or return;
-    $socket->setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
-        or die "setsockopt(TCP_NODELAY) failed:$!";
+    my $socket;
+    if ($self->get_server =~ m!/!) {
+        $socket = IO::Socket::UNIX->new(
+            Peer => $self->get_server,
+            Timeout => $self->get_connect_timeout,
+        ) or return;
+    } else {
+        $socket = IO::Socket::INET->new(
+            PeerAddr => $self->get_server,
+            Timeout => $self->get_connect_timeout,
+        ) or return;
+        $socket->setsockopt(IPPROTO_TCP, TCP_NODELAY, 1)
+            or die "setsockopt(TCP_NODELAY) failed:$!";
+    }
     $socket->blocking(0) or die $!;
     $self->set_socket($socket);
     $socket;
@@ -111,7 +120,7 @@ Create a new instance. Can also accept args as hashref.
 
 =item C<< server => "server:port" >>
 
-server address and port
+server address and port. For using unix_socket pass socket path to server like `server => '/path/to/redis.sock'. When server includes `/`, Redis::Jet treat server as unix_socket.
 
 =item connect_timeout
 
