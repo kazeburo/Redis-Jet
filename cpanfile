@@ -1,4 +1,4 @@
-requires 'perl', '5.008001';
+requires 'perl', '5.010001';
 
 on 'configure' => sub {
     requires 'Devel::CheckCompiler', '0.04';
