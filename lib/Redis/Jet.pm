@@ -120,7 +120,7 @@ Create a new instance. Can also accept args as hashref.
 
 =item C<< server => "server:port" >>
 
-server address and port
+server address and port. For using unix_socket pass socket path to server like `server => '/path/to/redis.sock'. When server includes `/`, Redis::Jet treat server as unix_socket.
 
 =item connect_timeout
 
