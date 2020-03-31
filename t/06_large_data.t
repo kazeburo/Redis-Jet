@@ -21,6 +21,8 @@ test_tcp(
         
         is $jet->command('set', $large_data, $large_data), 'OK';
         is $jet->command('get', $large_data), $large_data;
+
+        is_deeply $jet->pipeline(['set', $large_data, $large_data]), ['OK'];
     },
     server => sub {
         my ($port) = @_;
